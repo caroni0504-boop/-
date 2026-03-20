@@ -207,6 +207,13 @@ const AutoResizeTextarea = ({
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [lastBackupTime, setLastBackupTime] = useState<string | null>(() => localStorage.getItem('last_backup_time'));
+
+  useEffect(() => {
+    if (lastBackupTime) {
+      localStorage.setItem('last_backup_time', lastBackupTime);
+    }
+  }, [lastBackupTime]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -264,6 +271,8 @@ export default function App() {
           userId: currentUser.uid
         });
       }
+      const now = new Date().toLocaleString();
+      setLastBackupTime(now);
       alert('모든 프로젝트가 클라우드에 백업되었습니다.');
     } catch (error) {
       console.error('Backup Error:', error);
@@ -309,6 +318,7 @@ export default function App() {
         return merged;
       });
       alert('동기화가 완료되었습니다.');
+      setLastBackupTime(new Date().toLocaleString());
     } catch (error) {
       console.error('Sync Error:', error);
       alert('동기화 중 오류가 발생했습니다.');
@@ -905,25 +915,31 @@ export default function App() {
                 </button>
               )}
 
-              <div className="flex gap-2">
-                <button 
-                  onClick={backupToCloud}
-                  disabled={isSyncing}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all shadow-lg font-sans font-bold bg-white text-[#3E5C45] border border-[#3E5C45] hover:bg-[#3E5C45] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed`}
-                  title={user ? "클라우드 백업" : "로그인 후 백업 가능"}
-                >
-                  <CloudUpload size={20} className={isSyncing ? 'animate-bounce' : ''} /> 
-                  <span className="hidden sm:inline">백업</span>
-                </button>
-                <button 
-                  onClick={syncFromCloud}
-                  disabled={isSyncing}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all shadow-lg font-sans font-bold bg-white text-[#5A5A40] border border-[#5A5A40] hover:bg-[#5A5A40] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed`}
-                  title={user ? "클라우드 동기화" : "로그인 후 동기화 가능"}
-                >
-                  <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} /> 
-                  <span className="hidden sm:inline">동기화</span>
-                </button>
+              <div className="flex flex-col items-end gap-2">
+                <div className="flex gap-2">
+                  <button 
+                    onClick={backupToCloud}
+                    disabled={isSyncing}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all shadow-lg font-sans font-bold bg-white text-[#3E5C45] border border-[#3E5C45] hover:bg-[#3E5C45] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed`}
+                    title={user ? "클라우드 백업" : "로그인 후 백업 가능"}
+                  >
+                    <CloudUpload size={20} className={isSyncing ? 'animate-bounce' : ''} /> 
+                    <span className="hidden sm:inline">백업</span>
+                  </button>
+                  <button 
+                    onClick={syncFromCloud}
+                    disabled={isSyncing}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all shadow-lg font-sans font-bold bg-white text-[#5A5A40] border border-[#5A5A40] hover:bg-[#5A5A40] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed`}
+                    title={user ? "클라우드 동기화" : "로그인 후 동기화 가능"}
+                  >
+                    <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} /> 
+                    <span className="hidden sm:inline">동기화</span>
+                  </button>
+                </div>
+                {lastBackupTime && (
+                  <p className="text-[10px] text-[#8E8E7E] font-sans">마지막 동기화: {lastBackupTime}</p>
+                )}
+                <p className="text-[10px] text-[#8E8E7E] font-sans italic hidden md:block">아이패드 등 다른 기기에서 로그인 후 '동기화'를 누르면 작업이 이어집니다.</p>
               </div>
 
               <div className="flex p-1 rounded-full shadow-inner bg-[#E6E6D6]">
