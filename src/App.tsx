@@ -32,8 +32,10 @@ import {
   GripVertical,
   Camera,
   Upload,
-  FileJson
+  FileJson,
+  RefreshCw
 } from 'lucide-react';
+import Cropper, { Area, Point } from 'react-easy-crop';
 import { Project, Season, Chapter, Episode, EpisodeCut, TimelineNode, ReferenceCategory, ReferenceImage, Nation, Organization, Character } from './types';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -199,6 +201,88 @@ const AutoResizeTextarea = ({
   );
 };
 
+const getCroppedImg = (imageSrc: string, pixelCrop: Area, maxWidth?: number): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.src = imageSrc;
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('No 2d context'));
+        return;
+      }
+
+      let targetWidth = pixelCrop.width;
+      let targetHeight = pixelCrop.height;
+
+      if (maxWidth && targetWidth > maxWidth) {
+        const scale = maxWidth / targetWidth;
+        targetWidth = maxWidth;
+        targetHeight = targetHeight * scale;
+      }
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+
+      ctx.drawImage(
+        image,
+        pixelCrop.x,
+        pixelCrop.y,
+        pixelCrop.width,
+        pixelCrop.height,
+        0,
+        0,
+        targetWidth,
+        targetHeight
+      );
+
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    image.onerror = reject;
+  });
+};
+
+const resizeImage = (file: File, maxWidth: number = 1200, maxHeight: number = 1200): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.src = url;
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height *= maxWidth / width;
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width *= maxHeight / height;
+          height = maxHeight;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Could not get canvas context'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = (err) => {
+      URL.revokeObjectURL(url);
+      reject(err);
+    };
+  });
+};
+
 export default function App() {
   const [projects, setProjects] = useState<Project[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -279,6 +363,27 @@ export default function App() {
   };
 
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
+  const [cropModal, setCropModal] = useState<{
+    file: File;
+    imageUrl: string;
+    callback: (base64: string) => void;
+    aspect?: number;
+  } | null>(null);
+  const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  const [selectedAspect, setSelectedAspect] = useState<number | undefined>(undefined);
+  const [targetSize, setTargetSize] = useState<number | undefined>(1200);
+
+  const [resizeModal, setResizeModal] = useState<{
+    file: File;
+    callback: (base64: string) => void;
+  } | null>(null);
+  const [multiResizeModal, setMultiResizeModal] = useState<{
+    files: File[];
+    callback: (base64s: string[]) => void;
+  } | null>(null);
   const [activeSeasonId, setActiveSeasonId] = useState<string>('');
   const [activeChapterId, setActiveChapterId] = useState<string>('');
   const [activeEpisodeId, setActiveEpisodeId] = useState<string>('');
@@ -336,27 +441,65 @@ export default function App() {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void, aspect?: number) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        callback(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      const imageUrl = URL.createObjectURL(file);
+      setCropModal({ file, imageUrl, callback, aspect });
+      setSelectedAspect(aspect);
+      // Reset input so the same file can be selected again
+      e.target.value = '';
+    }
+  };
+
+  const closeCropModal = () => {
+    if (cropModal) {
+      URL.revokeObjectURL(cropModal.imageUrl);
+      setCropModal(null);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setCroppedAreaPixels(null);
+      setSelectedAspect(undefined);
+      setTargetSize(1200);
     }
   };
 
   const handleMultipleImagesUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64s: string[]) => void) => {
     const files = Array.from(e.target.files || []) as File[];
-    const promises = files.map(file => {
-      return new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(file);
-      });
-    });
-    Promise.all(promises).then(callback);
+    if (files.length > 0) {
+      setMultiResizeModal({ files, callback });
+      // Reset input
+      e.target.value = '';
+    }
+  };
+
+  const processImageResize = async (file: File, size: number, callback: (base64: string) => void) => {
+    setIsResizing(true);
+    try {
+      const base64 = await resizeImage(file, size, size);
+      callback(base64);
+    } catch (error) {
+      console.error('Resize Error:', error);
+      alert('이미지 처리 중 오류가 발생했습니다.');
+    } finally {
+      setIsResizing(false);
+      setResizeModal(null);
+    }
+  };
+
+  const processMultiImageResize = async (files: File[], size: number, callback: (base64s: string[]) => void) => {
+    setIsResizing(true);
+    try {
+      const promises = files.map(file => resizeImage(file, size, size));
+      const base64s = await Promise.all(promises);
+      callback(base64s);
+    } catch (error) {
+      console.error('Multi Resize Error:', error);
+      alert('이미지 처리 중 오류가 발생했습니다.');
+    } finally {
+      setIsResizing(false);
+      setMultiResizeModal(null);
+    }
   };
 
   const askConfirm = (title: string, message: string, onConfirm: () => void) => {
@@ -831,12 +974,12 @@ export default function App() {
                       className="flex items-center gap-2 px-4 py-2 text-[#3E5C45] hover:bg-[#F5F5F0] rounded-full transition-colors font-sans font-bold text-xs"
                       title="파일로 내보내기 (JSON)"
                     >
-                      <Upload size={16} />
+                      <Download size={16} />
                       <span>내보내기</span>
                     </button>
                     <div className="w-[1px] h-4 bg-[#D1D1C1] self-center mx-1"></div>
                     <label className="flex items-center gap-2 px-4 py-2 text-[#5A5A40] hover:bg-[#F5F5F0] rounded-full transition-colors cursor-pointer font-sans font-bold text-xs" title="파일에서 불러오기 (JSON)">
-                      <Download size={16} />
+                      <Upload size={16} />
                       <span>불러오기</span>
                       <input type="file" accept=".json" onChange={importFromJson} className="hidden" />
                     </label>
@@ -1604,7 +1747,7 @@ export default function App() {
                         <div className="flex items-center justify-between">
                           <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">세계관 지도</label>
                           <label className="cursor-pointer bg-[#3E5C45] text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-[#2E4C35] transition-colors">
-                            <Download size={16} className="inline mr-2" /> 지도 업로드
+                            <Upload size={16} className="inline mr-2" /> 지도 업로드
                             <input 
                               type="file" 
                               className="hidden" 
@@ -1697,7 +1840,7 @@ export default function App() {
                                             const newNations = [...activeProject.nations];
                                             newNations[idx] = { ...nation, banner: base64 };
                                             updateActiveProject({ nations: newNations });
-                                          })}
+                                          }, 21/9)}
                                         />
                                       </label>
                                       {nation.banner && (
@@ -1830,7 +1973,7 @@ export default function App() {
                                                 const newOrgs = [...activeProject.organizations];
                                                 newOrgs[idx] = { ...org, logo: base64 };
                                                 updateActiveProject({ organizations: newOrgs });
-                                              })}
+                                              }, 1)}
                                             />
                                           </label>
                                         </div>
@@ -2054,7 +2197,7 @@ export default function App() {
                                             const newChars = [...activeProject.characters];
                                             newChars[idx] = { ...char, image: base64 };
                                             updateActiveProject({ characters: newChars });
-                                          })}
+                                          }, 3/4)}
                                         />
                                       </label>
                                     </div>
@@ -3021,6 +3164,282 @@ export default function App() {
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Image Crop Modal */}
+      <AnimatePresence>
+        {cropModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-[32px] overflow-hidden max-w-2xl w-full h-[80vh] flex flex-col shadow-2xl"
+            >
+              <div className="p-6 border-b border-[#F5F5F0] flex items-center justify-between">
+                <h3 className="text-xl font-bold">이미지 자르기</h3>
+                <button onClick={closeCropModal} className="p-2 hover:bg-[#F5F5F0] rounded-full transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="relative flex-1 bg-[#1A1A1A]">
+                <Cropper
+                  image={cropModal.imageUrl}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={selectedAspect}
+                  onCropChange={setCrop}
+                  onZoomChange={setZoom}
+                  onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
+                />
+              </div>
+
+              <div className="p-6 space-y-6 bg-white">
+                <div className="space-y-3">
+                  <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">비율 선택</label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: '자유', value: undefined },
+                      { label: '1:1', value: 1 },
+                      { label: '3:4', value: 3/4 },
+                      { label: '4:3', value: 4/3 },
+                      { label: '16:9', value: 16/9 },
+                      { label: '21:9', value: 21/9 },
+                    ].map((ratio) => (
+                      <button
+                        key={ratio.label}
+                        onClick={() => setSelectedAspect(ratio.value)}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${selectedAspect === ratio.value ? 'bg-[#3E5C45] text-white border-[#3E5C45]' : 'bg-white text-[#8E8E7E] border-[#D1D1C1] hover:border-[#3E5C45]'}`}
+                      >
+                        {ratio.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">최종 크기 (가로 해상도)</label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: '대형 (1600px)', value: 1600 },
+                      { label: '중형 (1024px)', value: 1024 },
+                      { label: '소형 (600px)', value: 600 },
+                      { label: '원본', value: undefined },
+                    ].map((size) => (
+                      <button
+                        key={size.label}
+                        onClick={() => setTargetSize(size.value)}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${targetSize === size.value ? 'bg-[#3E5C45] text-white border-[#3E5C45]' : 'bg-white text-[#8E8E7E] border-[#D1D1C1] hover:border-[#3E5C45]'}`}
+                      >
+                        {size.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-[#8E8E7E]">고해상도 이미지는 앱 속도를 위해 크기를 줄이는 것을 추천합니다.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm font-medium text-[#8E8E7E]">
+                    <span>확대/축소</span>
+                    <span>{Math.round(zoom * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    value={zoom}
+                    min={1}
+                    max={3}
+                    step={0.1}
+                    aria-labelledby="Zoom"
+                    onChange={(e) => setZoom(Number(e.target.value))}
+                    className="w-full h-2 bg-[#F5F5F0] rounded-lg appearance-none cursor-pointer accent-[#3E5C45]"
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={closeCropModal}
+                    className="flex-1 py-4 rounded-2xl border border-[#D1D1C1] text-[#8E8E7E] font-sans font-bold hover:bg-[#F5F5F0] transition-all"
+                  >
+                    취소
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      if (croppedAreaPixels) {
+                        setIsResizing(true);
+                        try {
+                          const croppedBase64 = await getCroppedImg(cropModal.imageUrl, croppedAreaPixels, targetSize);
+                          cropModal.callback(croppedBase64);
+                          closeCropModal();
+                        } catch (e) {
+                          console.error(e);
+                          alert('이미지 처리 중 오류가 발생했습니다.');
+                        } finally {
+                          setIsResizing(false);
+                        }
+                      }
+                    }}
+                    className="flex-[2] py-4 rounded-2xl bg-[#3E5C45] text-white font-sans font-bold transition-all shadow-lg shadow-emerald-100"
+                  >
+                    적용하기
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Image Resize Modal */}
+      <AnimatePresence>
+        {resizeModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-[40px] p-10 max-w-md w-full shadow-2xl space-y-8"
+            >
+              <div className="text-center space-y-4">
+                <div className="w-20 h-20 bg-[#F5F5F0] rounded-full flex items-center justify-center mx-auto text-[#3E5C45]">
+                  <Camera size={40} />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-bold">이미지 크기 조정</h3>
+                  <p className="text-[#8E8E7E] font-sans text-sm">
+                    업로드할 이미지의 크기를 선택하세요.<br/>
+                    크기를 줄이면 앱이 더 빠르고 안정적으로 작동합니다.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <button 
+                  onClick={() => processImageResize(resizeModal.file, 1600, resizeModal.callback)}
+                  className="w-full py-4 rounded-2xl bg-[#F5F5F0] hover:bg-[#E6E6D6] text-[#1A1A1A] font-sans font-bold transition-all flex flex-col items-center"
+                >
+                  <span>대형 (1600px)</span>
+                  <span className="text-[10px] font-normal opacity-60">고화질, 저장 공간 많이 차지</span>
+                </button>
+                <button 
+                  onClick={() => processImageResize(resizeModal.file, 1024, resizeModal.callback)}
+                  className="w-full py-4 rounded-2xl bg-[#3E5C45] text-white font-sans font-bold transition-all flex flex-col items-center shadow-lg shadow-emerald-100"
+                >
+                  <span>중형 (1024px)</span>
+                  <span className="text-[10px] font-normal opacity-80">추천, 균형 잡힌 화질과 속도</span>
+                </button>
+                <button 
+                  onClick={() => processImageResize(resizeModal.file, 600, resizeModal.callback)}
+                  className="w-full py-4 rounded-2xl bg-[#F5F5F0] hover:bg-[#E6E6D6] text-[#1A1A1A] font-sans font-bold transition-all flex flex-col items-center"
+                >
+                  <span>소형 (600px)</span>
+                  <span className="text-[10px] font-normal opacity-60">저화질, 빠른 속도와 적은 용량</span>
+                </button>
+                <button 
+                  onClick={() => {
+                    setIsResizing(true);
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      resizeModal.callback(reader.result as string);
+                      setIsResizing(false);
+                      setResizeModal(null);
+                    };
+                    reader.readAsDataURL(resizeModal.file);
+                  }}
+                  className="w-full py-4 rounded-2xl border border-[#D1D1C1] text-[#8E8E7E] font-sans font-bold hover:bg-[#F5F5F0] transition-all"
+                >
+                  원본 그대로 (비추천)
+                </button>
+              </div>
+
+              <button 
+                onClick={() => setResizeModal(null)}
+                className="w-full py-2 text-[#8E8E7E] font-sans text-sm hover:underline"
+              >
+                취소
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Multi Image Resize Modal */}
+      <AnimatePresence>
+        {multiResizeModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-[40px] p-10 max-w-md w-full shadow-2xl space-y-8"
+            >
+              <div className="text-center space-y-4">
+                <div className="w-20 h-20 bg-[#F5F5F0] rounded-full flex items-center justify-center mx-auto text-[#3E5C45]">
+                  <ImageIcon size={40} />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-bold">여러 이미지 크기 조정</h3>
+                  <p className="text-[#8E8E7E] font-sans text-sm">
+                    {multiResizeModal.files.length}개의 이미지를 업로드합니다.<br/>
+                    일괄 적용할 크기를 선택하세요.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <button 
+                  onClick={() => processMultiImageResize(multiResizeModal.files, 1024, multiResizeModal.callback)}
+                  className="w-full py-4 rounded-2xl bg-[#3E5C45] text-white font-sans font-bold transition-all shadow-lg shadow-emerald-100"
+                >
+                  중형 (1024px) - 추천
+                </button>
+                <button 
+                  onClick={() => processMultiImageResize(multiResizeModal.files, 600, multiResizeModal.callback)}
+                  className="w-full py-4 rounded-2xl bg-[#F5F5F0] hover:bg-[#E6E6D6] text-[#1A1A1A] font-sans font-bold transition-all"
+                >
+                  소형 (600px) - 용량 절약
+                </button>
+              </div>
+
+              <button 
+                onClick={() => setMultiResizeModal(null)}
+                className="w-full py-2 text-[#8E8E7E] font-sans text-sm hover:underline"
+              >
+                취소
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Resizing Overlay */}
+      <AnimatePresence>
+        {isResizing && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[150] flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm"
+          >
+            <RefreshCw size={48} className="text-[#3E5C45] animate-spin mb-4" />
+            <p className="font-sans font-bold text-[#3E5C45]">이미지 처리 중...</p>
           </motion.div>
         )}
       </AnimatePresence>
