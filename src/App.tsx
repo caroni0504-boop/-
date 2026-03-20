@@ -218,15 +218,22 @@ export default function App() {
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      return result.user;
     } catch (error: any) {
       if (error.code === 'auth/popup-closed-by-user') {
-        // Silently handle or show a gentle message if the user closed the popup
         console.log('Login cancelled by user');
-        return;
+        return null;
       }
-      console.error('Login Error:', error);
-      alert('로그인에 실패했습니다. 다시 시도해 주세요.');
+      if (error.code === 'auth/unauthorized-domain') {
+        console.error('Unauthorized Domain. Add these to Firebase Console -> Auth -> Settings -> Authorized Domains:');
+        console.error(window.location.hostname);
+        alert('이 도메인은 Firebase에서 승인되지 않았습니다. 관리자 설정이 필요합니다.');
+      } else {
+        console.error('Login Error:', error);
+        alert('로그인에 실패했습니다. 다시 시도해 주세요.');
+      }
+      return null;
     }
   };
 
@@ -239,20 +246,22 @@ export default function App() {
   };
 
   const backupToCloud = async () => {
-    if (!user) {
-      alert('백업을 위해 로그인이 필요합니다.');
-      return;
+    let currentUser = user;
+    if (!currentUser) {
+      currentUser = await handleLogin();
+      if (!currentUser) return;
     }
+
     setIsSyncing(true);
     try {
       for (const p of projects) {
-        const projectRef = doc(db, 'users', user.uid, 'projects', p.id);
+        const projectRef = doc(db, 'users', currentUser.uid, 'projects', p.id);
         await setDoc(projectRef, {
           id: p.id,
           title: p.title,
           data: JSON.stringify(p),
           updatedAt: new Date().toISOString(),
-          userId: user.uid
+          userId: currentUser.uid
         });
       }
       alert('모든 프로젝트가 클라우드에 백업되었습니다.');
@@ -265,20 +274,27 @@ export default function App() {
   };
 
   const syncFromCloud = async () => {
-    if (!user) {
-      alert('동기화를 위해 로그인이 필요합니다.');
-      return;
+    let currentUser = user;
+    if (!currentUser) {
+      currentUser = await handleLogin();
+      if (!currentUser) return;
     }
+
     if (!confirm('클라우드 데이터를 가져오시겠습니까? 현재 로컬 데이터와 병합됩니다.')) return;
     
     setIsSyncing(true);
     try {
-      const querySnapshot = await getDocs(collection(db, 'users', user.uid, 'projects'));
+      const querySnapshot = await getDocs(collection(db, 'users', currentUser.uid, 'projects'));
       const cloudProjects: Project[] = [];
       querySnapshot.forEach((doc) => {
         const cloudData = doc.data();
         cloudProjects.push(JSON.parse(cloudData.data));
       });
+
+      if (cloudProjects.length === 0) {
+        alert('클라우드에 저장된 프로젝트가 없습니다.');
+        return;
+      }
 
       setProjects(prev => {
         const merged = [...prev];
@@ -287,7 +303,6 @@ export default function App() {
           if (index === -1) {
             merged.push(cp);
           } else {
-            // Simple conflict resolution: Cloud wins if newer (or just overwrite for now as requested)
             merged[index] = cp;
           }
         });
@@ -893,18 +908,18 @@ export default function App() {
               <div className="flex gap-2">
                 <button 
                   onClick={backupToCloud}
-                  disabled={isSyncing || !user}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all shadow-lg font-sans font-bold ${!user ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white text-[#3E5C45] border border-[#3E5C45] hover:bg-[#3E5C45] hover:text-white'}`}
-                  title="클라우드 백업"
+                  disabled={isSyncing}
+                  className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all shadow-lg font-sans font-bold bg-white text-[#3E5C45] border border-[#3E5C45] hover:bg-[#3E5C45] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title={user ? "클라우드 백업" : "로그인 후 백업 가능"}
                 >
                   <CloudUpload size={20} className={isSyncing ? 'animate-bounce' : ''} /> 
                   <span className="hidden sm:inline">백업</span>
                 </button>
                 <button 
                   onClick={syncFromCloud}
-                  disabled={isSyncing || !user}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all shadow-lg font-sans font-bold ${!user ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white text-[#5A5A40] border border-[#5A5A40] hover:bg-[#5A5A40] hover:text-white'}`}
-                  title="클라우드 동기화"
+                  disabled={isSyncing}
+                  className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all shadow-lg font-sans font-bold bg-white text-[#5A5A40] border border-[#5A5A40] hover:bg-[#5A5A40] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title={user ? "클라우드 동기화" : "로그인 후 동기화 가능"}
                 >
                   <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} /> 
                   <span className="hidden sm:inline">동기화</span>
