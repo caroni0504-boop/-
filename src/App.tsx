@@ -219,9 +219,14 @@ export default function App() {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === 'auth/popup-closed-by-user') {
+        // Silently handle or show a gentle message if the user closed the popup
+        console.log('Login cancelled by user');
+        return;
+      }
       console.error('Login Error:', error);
-      alert('로그인에 실패했습니다.');
+      alert('로그인에 실패했습니다. 다시 시도해 주세요.');
     }
   };
 
