@@ -858,6 +858,8 @@ export default function App() {
                 <p style="font-size: 14px; color: #5A5A40; margin-bottom: 12px; font-weight: bold;">${char.role}</p>
                 <div style="font-size: 14px; color: #4A4A4A; space-y-2">
                   ${[
+                    { label: '욕망(목표)', value: char.desire },
+                    { label: '신념', value: char.belief },
                     { label: '성격', value: char.personality },
                     { label: '외양', value: char.appearance },
                     { label: '능력', value: char.ability },
@@ -866,12 +868,6 @@ export default function App() {
                     <div style="margin-bottom: 8px;">
                       <span style="font-weight: bold; color: #8E8E7E; font-size: 11px; text-transform: uppercase;">${f.label}:</span>
                       <span style="display: block; margin-top: 2px;">${f.value || ''}</span>
-                    </div>
-                  `).join('')}
-                  ${(char.infoItems || []).map(item => `
-                    <div style="margin-bottom: 8px;">
-                      <span style="font-weight: bold; color: #8E8E7E; font-size: 11px; text-transform: uppercase;">${item.label}:</span>
-                      <span style="display: block; margin-top: 2px;">${item.value || ''}</span>
                     </div>
                   `).join('')}
                 </div>
@@ -2151,8 +2147,7 @@ export default function App() {
                                 ability: '', 
                                 desire: '', 
                                 belief: '', 
-                                specialNotes: '', 
-                                infoItems: [] 
+                                specialNotes: ''
                               };
                               updateActiveProject({ characters: [...activeProject.characters, newChar] });
                             }}
@@ -2247,19 +2242,8 @@ export default function App() {
                                       </div>
 
                                       <div className="space-y-4">
-                                        <div className="flex items-center justify-between border-b border-[#D1D1C1] pb-2">
+                                        <div className="border-b border-[#D1D1C1] pb-2">
                                           <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">정보란</label>
-                                          <button 
-                                            onClick={() => {
-                                              const newChars = [...activeProject.characters];
-                                              const newInfoItems = [...(char.infoItems || []), { label: '새 항목', value: '' }];
-                                              newChars[idx] = { ...char, infoItems: newInfoItems };
-                                              updateActiveProject({ characters: newChars });
-                                            }}
-                                            className="text-[10px] bg-[#3E5C45] text-white px-2 py-1 rounded-full hover:bg-[#2E4C35] transition-colors"
-                                          >
-                                            항목 추가
-                                          </button>
                                         </div>
                                         
                                         <div className="grid grid-cols-1 gap-4">
@@ -2278,49 +2262,6 @@ export default function App() {
                                                 onChange={(e) => {
                                                   const newChars = [...activeProject.characters];
                                                   newChars[idx] = { ...char, [field.id]: e.target.value };
-                                                  updateActiveProject({ characters: newChars });
-                                                }}
-                                                className="flex-1 text-sm bg-[#F5F5F0] p-4 rounded-xl border border-[#D1D1C1] outline-none focus:border-[#3E5C45] transition-colors resize-none"
-                                                minHeight="44px"
-                                              />
-                                            </div>
-                                          ))}
-                                          
-                                          {(char.infoItems || []).map((item, itemIdx) => (
-                                            <div key={itemIdx} className="flex flex-col md:flex-row md:items-start gap-4 border-b border-[#D1D1C1]/30 pb-4 group/item">
-                                              <div className="w-full md:w-32 space-y-1">
-                                                <input 
-                                                  type="text"
-                                                  value={item.label}
-                                                  onChange={(e) => {
-                                                    const newChars = [...activeProject.characters];
-                                                    const newInfoItems = [...(char.infoItems || [])];
-                                                    newInfoItems[itemIdx] = { ...item, label: e.target.value };
-                                                    newChars[idx] = { ...char, infoItems: newInfoItems };
-                                                    updateActiveProject({ characters: newChars });
-                                                  }}
-                                                  className="w-full text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold bg-transparent border-none outline-none focus:text-[#3E5C45]"
-                                                />
-                                                <button 
-                                                  onClick={() => {
-                                                    const newChars = [...activeProject.characters];
-                                                    const newInfoItems = char.infoItems?.filter((_, i) => i !== itemIdx);
-                                                    newChars[idx] = { ...char, infoItems: newInfoItems };
-                                                    updateActiveProject({ characters: newChars });
-                                                  }}
-                                                  className="text-[10px] text-red-500 hover:text-red-700 transition-all flex items-center gap-1 mt-1"
-                                                >
-                                                  <Trash2 size={10} />
-                                                  삭제
-                                                </button>
-                                              </div>
-                                              <AutoResizeTextarea 
-                                                value={item.value}
-                                                onChange={(e) => {
-                                                  const newChars = [...activeProject.characters];
-                                                  const newInfoItems = [...(char.infoItems || [])];
-                                                  newInfoItems[itemIdx] = { ...item, value: e.target.value };
-                                                  newChars[idx] = { ...char, infoItems: newInfoItems };
                                                   updateActiveProject({ characters: newChars });
                                                 }}
                                                 className="flex-1 text-sm bg-[#F5F5F0] p-4 rounded-xl border border-[#D1D1C1] outline-none focus:border-[#3E5C45] transition-colors resize-none"

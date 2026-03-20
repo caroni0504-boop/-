@@ -45,7 +45,6 @@ export interface Character {
   appearance?: string;
   ability?: string;
   specialNotes?: string;
-  infoItems?: { label: string; value: string }[];
 }
 
 export interface Nation {
