@@ -31,17 +31,12 @@ import {
   CheckCircle,
   GripVertical,
   Camera,
-  CloudUpload,
-  RefreshCw,
-  LogOut,
-  LogIn
+  Upload,
+  FileJson
 } from 'lucide-react';
 import { Project, Season, Chapter, Episode, EpisodeCut, TimelineNode, ReferenceCategory, ReferenceImage, Nation, Organization, Character } from './types';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { auth, db } from './firebase';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { doc, setDoc, getDocs, collection, deleteDoc, getDoc } from 'firebase/firestore';
 import {
   DndContext,
   closestCenter,
@@ -205,128 +200,6 @@ const AutoResizeTextarea = ({
 };
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastBackupTime, setLastBackupTime] = useState<string | null>(() => localStorage.getItem('last_backup_time'));
-
-  useEffect(() => {
-    if (lastBackupTime) {
-      localStorage.setItem('last_backup_time', lastBackupTime);
-    }
-  }, [lastBackupTime]);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const handleLogin = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      return result.user;
-    } catch (error: any) {
-      if (error.code === 'auth/popup-closed-by-user') {
-        console.log('Login cancelled by user');
-        return null;
-      }
-      if (error.code === 'auth/unauthorized-domain') {
-        console.error('Unauthorized Domain. Add these to Firebase Console -> Auth -> Settings -> Authorized Domains:');
-        console.error(window.location.hostname);
-        alert('이 도메인은 Firebase에서 승인되지 않았습니다. 관리자 설정이 필요합니다.');
-      } else {
-        console.error('Login Error:', error);
-        alert('로그인에 실패했습니다. 다시 시도해 주세요.');
-      }
-      return null;
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error('Logout Error:', error);
-    }
-  };
-
-  const backupToCloud = async () => {
-    let currentUser = user;
-    if (!currentUser) {
-      currentUser = await handleLogin();
-      if (!currentUser) return;
-    }
-
-    setIsSyncing(true);
-    try {
-      for (const p of projects) {
-        const projectRef = doc(db, 'users', currentUser.uid, 'projects', p.id);
-        await setDoc(projectRef, {
-          id: p.id,
-          title: p.title,
-          data: JSON.stringify(p),
-          updatedAt: new Date().toISOString(),
-          userId: currentUser.uid
-        });
-      }
-      const now = new Date().toLocaleString();
-      setLastBackupTime(now);
-      alert('모든 프로젝트가 클라우드에 백업되었습니다.');
-    } catch (error) {
-      console.error('Backup Error:', error);
-      alert('백업 중 오류가 발생했습니다.');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const syncFromCloud = async () => {
-    let currentUser = user;
-    if (!currentUser) {
-      currentUser = await handleLogin();
-      if (!currentUser) return;
-    }
-
-    if (!confirm('클라우드 데이터를 가져오시겠습니까? 현재 로컬 데이터와 병합됩니다.')) return;
-    
-    setIsSyncing(true);
-    try {
-      const querySnapshot = await getDocs(collection(db, 'users', currentUser.uid, 'projects'));
-      const cloudProjects: Project[] = [];
-      querySnapshot.forEach((doc) => {
-        const cloudData = doc.data();
-        cloudProjects.push(JSON.parse(cloudData.data));
-      });
-
-      if (cloudProjects.length === 0) {
-        alert('클라우드에 저장된 프로젝트가 없습니다.');
-        return;
-      }
-
-      setProjects(prev => {
-        const merged = [...prev];
-        cloudProjects.forEach(cp => {
-          const index = merged.findIndex(p => p.id === cp.id);
-          if (index === -1) {
-            merged.push(cp);
-          } else {
-            merged[index] = cp;
-          }
-        });
-        return merged;
-      });
-      alert('동기화가 완료되었습니다.');
-      setLastBackupTime(new Date().toLocaleString());
-    } catch (error) {
-      console.error('Sync Error:', error);
-      alert('동기화 중 오류가 발생했습니다.');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const [projects, setProjects] = useState<Project[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -350,6 +223,60 @@ export default function App() {
     }
     return [createInitialProject()];
   });
+
+  const exportToJson = () => {
+    try {
+      const dataStr = JSON.stringify(projects, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+      
+      const exportFileDefaultName = `comic_script_backup_${new Date().toISOString().split('T')[0]}.json`;
+      
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+    } catch (error) {
+      console.error('Export Error:', error);
+      alert('내보내기 중 오류가 발생했습니다.');
+    }
+  };
+
+  const importFromJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (!Array.isArray(json)) {
+          throw new Error('올바른 백업 파일 형식이 아닙니다.');
+        }
+
+        if (confirm('파일에서 프로젝트를 불러오시겠습니까? 기존 데이터와 병합됩니다.')) {
+          setProjects(prev => {
+            const merged = [...prev];
+            json.forEach((newP: Project) => {
+              const index = merged.findIndex(p => p.id === newP.id);
+              if (index === -1) {
+                merged.push(newP);
+              } else {
+                merged[index] = newP;
+              }
+            });
+            return merged;
+          });
+          alert('프로젝트를 성공적으로 불러왔습니다.');
+        }
+      } catch (error) {
+        console.error('Import Error:', error);
+        alert('파일을 읽는 중 오류가 발생했습니다. 올바른 JSON 파일인지 확인해주세요.');
+      }
+    };
+    reader.readAsText(file);
+    // Reset input
+    e.target.value = '';
+  };
 
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeSeasonId, setActiveSeasonId] = useState<string>('');
@@ -895,51 +822,27 @@ export default function App() {
               <p className="text-[#8E8E7E] mt-4 font-sans uppercase tracking-widest text-sm">내 프로젝트 보관함</p>
             </div>
             <div className="flex items-center gap-4 w-full md:w-auto">
-              {user ? (
-                <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-full border border-[#D1D1C1] shadow-sm">
-                  <img src={user.photoURL || ''} alt={user.displayName || ''} className="w-8 h-8 rounded-full" />
-                  <div className="hidden lg:block">
-                    <p className="text-xs font-bold leading-none">{user.displayName}</p>
-                    <p className="text-[10px] text-[#8E8E7E]">{user.email}</p>
-                  </div>
-                  <button onClick={handleLogout} className="p-1 text-[#8E8E7E] hover:text-red-500 transition-colors" title="로그아웃">
-                    <LogOut size={16} />
-                  </button>
-                </div>
-              ) : (
-                <button 
-                  onClick={handleLogin}
-                  className="flex items-center gap-2 bg-white text-[#1A1A1A] border border-[#D1D1C1] px-6 py-3 rounded-full transition-all shadow-md font-sans font-bold hover:bg-[#F5F5F0]"
-                >
-                  <LogIn size={20} /> 로그인
-                </button>
-              )}
-
               <div className="flex flex-col items-end gap-2">
                 <div className="flex gap-2">
-                  <button 
-                    onClick={backupToCloud}
-                    disabled={isSyncing}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all shadow-lg font-sans font-bold bg-white text-[#3E5C45] border border-[#3E5C45] hover:bg-[#3E5C45] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed`}
-                    title={user ? "클라우드 백업" : "로그인 후 백업 가능"}
-                  >
-                    <CloudUpload size={20} className={isSyncing ? 'animate-bounce' : ''} /> 
-                    <span className="hidden sm:inline">백업</span>
-                  </button>
-                  <button 
-                    onClick={syncFromCloud}
-                    disabled={isSyncing}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all shadow-lg font-sans font-bold bg-white text-[#5A5A40] border border-[#5A5A40] hover:bg-[#5A5A40] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed`}
-                    title={user ? "클라우드 동기화" : "로그인 후 동기화 가능"}
-                  >
-                    <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} /> 
-                    <span className="hidden sm:inline">동기화</span>
-                  </button>
+                  {/* File Export/Import (No Firebase) */}
+                  <div className="flex bg-white rounded-full border border-[#D1D1C1] p-1 shadow-sm">
+                    <button 
+                      onClick={exportToJson}
+                      className="flex items-center gap-2 px-4 py-2 text-[#3E5C45] hover:bg-[#F5F5F0] rounded-full transition-colors font-sans font-bold text-xs"
+                      title="파일로 내보내기 (JSON)"
+                    >
+                      <Upload size={16} />
+                      <span>내보내기</span>
+                    </button>
+                    <div className="w-[1px] h-4 bg-[#D1D1C1] self-center mx-1"></div>
+                    <label className="flex items-center gap-2 px-4 py-2 text-[#5A5A40] hover:bg-[#F5F5F0] rounded-full transition-colors cursor-pointer font-sans font-bold text-xs" title="파일에서 불러오기 (JSON)">
+                      <Download size={16} />
+                      <span>불러오기</span>
+                      <input type="file" accept=".json" onChange={importFromJson} className="hidden" />
+                    </label>
+                  </div>
                 </div>
-                {lastBackupTime && (
-                  <p className="text-[10px] text-[#8E8E7E] font-sans">마지막 동기화: {lastBackupTime}</p>
-                )}
-                <p className="text-[10px] text-[#8E8E7E] font-sans italic hidden md:block">아이패드 등 다른 기기에서 로그인 후 '동기화'를 누르면 작업이 이어집니다.</p>
+                <p className="text-[10px] text-[#8E8E7E] font-sans italic hidden md:block">파일 내보내기/불러오기를 통해 기기 간 이동이 가능합니다.</p>
               </div>
 
               <div className="flex p-1 rounded-full shadow-inner bg-[#E6E6D6]">
