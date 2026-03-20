@@ -4,7 +4,7 @@ import {
   Search,
   Tag,
   FolderPlus,
-  Image,
+  Image as ImageIcon,
   Plus, 
   ChevronRight, 
   ChevronLeft, 
@@ -28,13 +28,64 @@ import {
   Globe,
   Users,
   TrendingUp,
-  CheckCircle
+  CheckCircle,
+  GripVertical,
+  Camera,
+  CloudUpload,
+  RefreshCw,
+  LogOut,
+  LogIn
 } from 'lucide-react';
-import { Project, Season, Chapter, Episode, TimelineNode, ReferenceCategory, ReferenceImage } from './types';
+import { Project, Season, Chapter, Episode, EpisodeCut, TimelineNode, ReferenceCategory, ReferenceImage, Nation, Organization, Character } from './types';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { auth, db } from './firebase';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { doc, setDoc, getDocs, collection, deleteDoc, getDoc } from 'firebase/firestore';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 
 const STORAGE_KEY = 'comic_script_projects_v2';
+
+const SortableItem: React.FC<{ id: string; children: React.ReactNode }> = ({ id, children }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : 'auto',
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      {children}
+    </div>
+  );
+};
 
 const createInitialProject = (title: string = '새로운 프로젝트'): Project => ({
   id: Date.now().toString(),
@@ -62,33 +113,33 @@ const createInitialProject = (title: string = '새로운 프로젝트'): Project
       id: 'act1', 
       title: '1막 (도입)', 
       chapters: [
-        { id: 'act1-c1', title: '1장: 오프닝 이미지', content: '' },
-        { id: 'act1-c2', title: '2장: 주제 제시', content: '' },
-        { id: 'act1-c3', title: '3장: 설정', content: '' },
-        { id: 'act1-c4', title: '4장: 기폭제', content: '' },
-        { id: 'act1-c5', title: '5장: 토론', content: '' },
+        { id: 'act1-c1', title: '오프닝 이미지', content: '' },
+        { id: 'act1-c2', title: '주제 제시', content: '' },
+        { id: 'act1-c3', title: '설정', content: '' },
+        { id: 'act1-c4', title: '기폭제', content: '' },
+        { id: 'act1-c5', title: '토론', content: '' },
       ] 
     },
     { 
       id: 'act2', 
       title: '2막 (전개)', 
       chapters: [
-        { id: 'act2-c1', title: '6장: 2막 진입', content: '' },
-        { id: 'act2-c2', title: '7장: B 스토리', content: '' },
-        { id: 'act2-c3', title: '8장: 재미와 놀이', content: '' },
-        { id: 'act2-c4', title: '9장: 중간점', content: '' },
-        { id: 'act2-c5', title: '10장: 악당이 다가오다', content: '' },
-        { id: 'act2-c6', title: '11장: 모든 것을 잃다', content: '' },
-        { id: 'act2-c7', title: '12장: 영혼의 어두운 밤', content: '' },
+        { id: 'act2-c1', title: '2막 진입', content: '' },
+        { id: 'act2-c2', title: 'B 스토리', content: '' },
+        { id: 'act2-c3', title: '재미와 놀이', content: '' },
+        { id: 'act2-c4', title: '중간점', content: '' },
+        { id: 'act2-c5', title: '악당이 다가오다', content: '' },
+        { id: 'act2-c6', title: '모든 것을 잃다', content: '' },
+        { id: 'act2-c7', title: '영혼의 어두운 밤', content: '' },
       ] 
     },
     { 
       id: 'act3', 
       title: '3막 (결말)', 
       chapters: [
-        { id: 'act3-c1', title: '13장: 3막 진입', content: '' },
-        { id: 'act3-c2', title: '14장: 피날레', content: '' },
-        { id: 'act3-c3', title: '15장: 최종 이미지', content: '' },
+        { id: 'act3-c1', title: '3막 진입', content: '' },
+        { id: 'act3-c2', title: '피날레', content: '' },
+        { id: 'act3-c3', title: '최종 이미지', content: '' },
       ] 
     },
   ],
@@ -154,6 +205,98 @@ const AutoResizeTextarea = ({
 };
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error('Login Error:', error);
+      alert('로그인에 실패했습니다.');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Logout Error:', error);
+    }
+  };
+
+  const backupToCloud = async () => {
+    if (!user) {
+      alert('백업을 위해 로그인이 필요합니다.');
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      for (const p of projects) {
+        const projectRef = doc(db, 'users', user.uid, 'projects', p.id);
+        await setDoc(projectRef, {
+          id: p.id,
+          title: p.title,
+          data: JSON.stringify(p),
+          updatedAt: new Date().toISOString(),
+          userId: user.uid
+        });
+      }
+      alert('모든 프로젝트가 클라우드에 백업되었습니다.');
+    } catch (error) {
+      console.error('Backup Error:', error);
+      alert('백업 중 오류가 발생했습니다.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const syncFromCloud = async () => {
+    if (!user) {
+      alert('동기화를 위해 로그인이 필요합니다.');
+      return;
+    }
+    if (!confirm('클라우드 데이터를 가져오시겠습니까? 현재 로컬 데이터와 병합됩니다.')) return;
+    
+    setIsSyncing(true);
+    try {
+      const querySnapshot = await getDocs(collection(db, 'users', user.uid, 'projects'));
+      const cloudProjects: Project[] = [];
+      querySnapshot.forEach((doc) => {
+        const cloudData = doc.data();
+        cloudProjects.push(JSON.parse(cloudData.data));
+      });
+
+      setProjects(prev => {
+        const merged = [...prev];
+        cloudProjects.forEach(cp => {
+          const index = merged.findIndex(p => p.id === cp.id);
+          if (index === -1) {
+            merged.push(cp);
+          } else {
+            // Simple conflict resolution: Cloud wins if newer (or just overwrite for now as requested)
+            merged[index] = cp;
+          }
+        });
+        return merged;
+      });
+      alert('동기화가 완료되었습니다.');
+    } catch (error) {
+      console.error('Sync Error:', error);
+      alert('동기화 중 오류가 발생했습니다.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const [projects, setProjects] = useState<Project[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -198,6 +341,43 @@ export default function App() {
     message: string;
     onConfirm: () => void;
   } | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        delay: 500,
+        tolerance: 10,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent, listKey: 'nations' | 'organizations' | 'characters') => {
+    const { active, over } = event;
+    if (active.id !== over?.id) {
+      const oldIndex = activeProject[listKey].findIndex((item: any) => item.id === active.id);
+      const newIndex = activeProject[listKey].findIndex((item: any) => item.id === over?.id);
+      const newItems = arrayMove(activeProject[listKey], oldIndex, newIndex);
+      updateActiveProject({ [listKey]: newItems });
+    }
+  };
+
+  const handleCutDragEnd = (event: DragEndEvent, seasonId: string, chapterId: string, episodeId: string) => {
+    const { active, over } = event;
+    if (active.id !== over?.id && activeProject) {
+      const season = activeProject.seasons.find(s => s.id === seasonId);
+      const chapter = season?.chapters.find(c => c.id === chapterId);
+      const episode = chapter?.episodes.find(e => e.id === episodeId);
+      if (episode && episode.cuts) {
+        const oldIndex = episode.cuts.findIndex(item => item.id === active.id);
+        const newIndex = episode.cuts.findIndex(item => item.id === over?.id);
+        const newCuts = arrayMove(episode.cuts, oldIndex, newIndex) as EpisodeCut[];
+        updateEpisode(seasonId, chapterId, episodeId, { cuts: newCuts });
+      }
+    }
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
     const file = e.target.files?.[0];
@@ -685,6 +865,47 @@ export default function App() {
               <p className="text-[#8E8E7E] mt-4 font-sans uppercase tracking-widest text-sm">내 프로젝트 보관함</p>
             </div>
             <div className="flex items-center gap-4 w-full md:w-auto">
+              {user ? (
+                <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-full border border-[#D1D1C1] shadow-sm">
+                  <img src={user.photoURL || ''} alt={user.displayName || ''} className="w-8 h-8 rounded-full" />
+                  <div className="hidden lg:block">
+                    <p className="text-xs font-bold leading-none">{user.displayName}</p>
+                    <p className="text-[10px] text-[#8E8E7E]">{user.email}</p>
+                  </div>
+                  <button onClick={handleLogout} className="p-1 text-[#8E8E7E] hover:text-red-500 transition-colors" title="로그아웃">
+                    <LogOut size={16} />
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={handleLogin}
+                  className="flex items-center gap-2 bg-white text-[#1A1A1A] border border-[#D1D1C1] px-6 py-3 rounded-full transition-all shadow-md font-sans font-bold hover:bg-[#F5F5F0]"
+                >
+                  <LogIn size={20} /> 로그인
+                </button>
+              )}
+
+              <div className="flex gap-2">
+                <button 
+                  onClick={backupToCloud}
+                  disabled={isSyncing || !user}
+                  className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all shadow-lg font-sans font-bold ${!user ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white text-[#3E5C45] border border-[#3E5C45] hover:bg-[#3E5C45] hover:text-white'}`}
+                  title="클라우드 백업"
+                >
+                  <CloudUpload size={20} className={isSyncing ? 'animate-bounce' : ''} /> 
+                  <span className="hidden sm:inline">백업</span>
+                </button>
+                <button 
+                  onClick={syncFromCloud}
+                  disabled={isSyncing || !user}
+                  className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all shadow-lg font-sans font-bold ${!user ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white text-[#5A5A40] border border-[#5A5A40] hover:bg-[#5A5A40] hover:text-white'}`}
+                  title="클라우드 동기화"
+                >
+                  <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} /> 
+                  <span className="hidden sm:inline">동기화</span>
+                </button>
+              </div>
+
               <div className="flex p-1 rounded-full shadow-inner bg-[#E6E6D6]">
                 <button 
                   onClick={() => setStorageMode('planning')}
@@ -957,7 +1178,7 @@ export default function App() {
                     onClick={() => setView('referenceBoard')}
                     className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${view === 'referenceBoard' ? 'bg-[#3E5C45] text-white' : 'hover:bg-[#F5F5F0]'}`}
                   >
-                    <Image size={18} />
+                    <ImageIcon size={18} />
                     <span className="font-medium">레퍼런스 보드</span>
                   </button>
                   <div className="h-px bg-[#D1D1C1] my-2 mx-3" />
@@ -982,13 +1203,6 @@ export default function App() {
                     <div className="flex justify-between items-center px-3 mb-2">
                       <span className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">시작하기</span>
                     </div>
-                    <button 
-                      onClick={() => setView('summaryView')}
-                      className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${view === 'summaryView' ? 'bg-[#5A5A40] text-white' : 'hover:bg-[#F5F5F0]'}`}
-                    >
-                      <LayoutGrid size={18} />
-                      <span className="font-medium">요약보기</span>
-                    </button>
                     <button 
                       onClick={() => setShowMindMap(true)}
                       className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors hover:bg-[#F5F5F0]"
@@ -1410,37 +1624,37 @@ export default function App() {
                       <div className="space-y-8">
                         <div className="space-y-4">
                           <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">기본 세계관</label>
-                          <textarea 
+                          <AutoResizeTextarea 
                             value={activeProject.worldBasic}
                             onChange={(e) => updateActiveProject({ worldBasic: e.target.value })}
-                            className="w-full min-h-[200px] text-lg leading-relaxed bg-[#F5F5F0] p-6 rounded-3xl border border-[#D1D1C1] outline-none focus:border-[#3E5C45] transition-colors placeholder-[#D1D1C1] resize-none"
+                            className="w-full min-h-[200px] text-lg leading-relaxed bg-white p-6 rounded-3xl border border-[#B1B1A1] outline-none focus:border-[#3E5C45] transition-colors placeholder-[#D1D1C1] resize-none"
                             placeholder="시대 배경, 장소, 사회 규칙 등 기본 세계관을 상세히 설정하세요..."
                           />
                         </div>
                         <div className="space-y-4">
                           <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">용어 정리</label>
-                          <textarea 
+                          <AutoResizeTextarea 
                             value={activeProject.worldTerminology}
                             onChange={(e) => updateActiveProject({ worldTerminology: e.target.value })}
-                            className="w-full min-h-[150px] text-lg leading-relaxed bg-[#F5F5F0] p-6 rounded-3xl border border-[#D1D1C1] outline-none focus:border-[#3E5C45] transition-colors placeholder-[#D1D1C1] resize-none"
+                            className="w-full min-h-[150px] text-lg leading-relaxed bg-white p-6 rounded-3xl border border-[#B1B1A1] outline-none focus:border-[#3E5C45] transition-colors placeholder-[#D1D1C1] resize-none"
                             placeholder="작품 고유의 용어나 개념을 정의하세요..."
                           />
                         </div>
                         <div className="space-y-4">
                           <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">능력 시스템</label>
-                          <textarea 
+                          <AutoResizeTextarea 
                             value={activeProject.worldAbilitySystem}
                             onChange={(e) => updateActiveProject({ worldAbilitySystem: e.target.value })}
-                            className="w-full min-h-[150px] text-lg leading-relaxed bg-[#F5F5F0] p-6 rounded-3xl border border-[#D1D1C1] outline-none focus:border-[#3E5C45] transition-colors placeholder-[#D1D1C1] resize-none"
+                            className="w-full min-h-[150px] text-lg leading-relaxed bg-white p-6 rounded-3xl border border-[#B1B1A1] outline-none focus:border-[#3E5C45] transition-colors placeholder-[#D1D1C1] resize-none"
                             placeholder="마법, 초능력 등 작품 내 능력 체계를 설정하세요..."
                           />
                         </div>
                         <div className="space-y-4">
                           <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">기타 설정</label>
-                          <textarea 
+                          <AutoResizeTextarea 
                             value={activeProject.worldOtherSettings}
                             onChange={(e) => updateActiveProject({ worldOtherSettings: e.target.value })}
-                            className="w-full min-h-[150px] text-lg leading-relaxed bg-[#F5F5F0] p-6 rounded-3xl border border-[#D1D1C1] outline-none focus:border-[#3E5C45] transition-colors placeholder-[#D1D1C1] resize-none"
+                            className="w-full min-h-[150px] text-lg leading-relaxed bg-white p-6 rounded-3xl border border-[#B1B1A1] outline-none focus:border-[#3E5C45] transition-colors placeholder-[#D1D1C1] resize-none"
                             placeholder="그 외 세계관 관련 추가 설정을 작성하세요..."
                           />
                         </div>
@@ -1483,7 +1697,7 @@ export default function App() {
                         <div className="flex items-center justify-end">
                           <button 
                             onClick={() => {
-                              const newNation = { id: Date.now().toString(), name: '새 국가', era: '', space: '', races: '', history: '', culture: '', environment: '', other: '' };
+                              const newNation: Nation = { id: Date.now().toString(), name: '새 국가', era: '', space: '', races: '', history: '', culture: '', environment: '', other: '' };
                               updateActiveProject({ nations: [...activeProject.nations, newNation] });
                             }}
                             className="bg-[#3E5C45] text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-[#2E4C35] transition-colors"
@@ -1491,74 +1705,134 @@ export default function App() {
                             <Plus size={16} className="inline mr-2" /> 국가 추가
                           </button>
                         </div>
-                        <div className="space-y-6">
-                          {activeProject.nations.map((nation, idx) => (
-                            <div key={nation.id} className="py-8 space-y-6 relative group border-b border-[#D1D1C1] last:border-0">
-                              <button 
-                                onClick={() => {
-                                  const newNations = [...activeProject.nations];
-                                  newNations.splice(idx, 1);
-                                  updateActiveProject({ nations: newNations });
-                                }}
-                                className="absolute top-6 right-0 p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
-                              >
-                                <Trash2 size={18} />
-                              </button>
-                              <div className="space-y-2">
-                                <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">국가/지역명</label>
-                                <input 
-                                  type="text"
-                                  value={nation.name}
-                                  onChange={(e) => {
-                                    const newNations = [...activeProject.nations];
-                                    newNations[idx] = { ...nation, name: e.target.value };
-                                    updateActiveProject({ nations: newNations });
-                                  }}
-                                  className="w-full text-2xl font-bold bg-transparent border-none outline-none focus:ring-0 p-0"
-                                />
-                              </div>
-                              <div className="grid grid-cols-1 gap-4">
-                                {[
-                                  { id: 'era', label: '시대 배경', value: nation.era },
-                                  { id: 'space', label: '공간 배경', value: nation.space },
-                                  { id: 'races', label: '주요 종족', value: nation.races },
-                                  { id: 'history', label: '역사', value: nation.history },
-                                  { id: 'culture', label: '사회문화', value: nation.culture },
-                                  { id: 'environment', label: '환경', value: nation.environment },
-                                  { id: 'other', label: '기타 특징', value: nation.other }
-                                ].map(field => (
-                                  <div key={field.id} className="flex flex-col md:flex-row md:items-start gap-4">
-                                    <label className="w-full md:w-32 text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold pt-2">{field.label}</label>
-                                    <AutoResizeTextarea 
-                                      value={field.value}
-                                      onChange={(e) => {
-                                        const newNations = [...activeProject.nations];
-                                        newNations[idx] = { ...nation, [field.id]: e.target.value };
-                                        updateActiveProject({ nations: newNations });
-                                      }}
-                                      className="flex-1 text-sm bg-transparent p-0 border-none outline-none focus:ring-0 resize-none"
-                                      minHeight="44px"
-                                    />
+                        <DndContext 
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={(e) => handleDragEnd(e, 'nations')}
+                          modifiers={[restrictToVerticalAxis]}
+                        >
+                          <SortableContext 
+                            items={activeProject.nations.map(n => n.id)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            <div className="space-y-6">
+                              {activeProject.nations.map((nation, idx) => (
+                                <SortableItem key={nation.id} id={nation.id}>
+                                  <div className="p-8 bg-white rounded-[32px] border border-[#B1B1A1] space-y-6 relative group shadow-md overflow-hidden hover:border-[#3E5C45]/30 transition-all">
+                                    <div className="absolute top-6 right-6 flex items-center gap-2 z-10">
+                                      <div className="p-2 text-[#D1D1C1] opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+                                        <GripVertical size={18} />
+                                      </div>
+                                      <button 
+                                        onClick={() => {
+                                          const newNations = [...activeProject.nations];
+                                          newNations.splice(idx, 1);
+                                          updateActiveProject({ nations: newNations });
+                                        }}
+                                        className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                                      >
+                                        <Trash2 size={18} />
+                                      </button>
+                                    </div>
+
+                                    {/* Banner Image Section */}
+                                    <div className="relative w-full h-64 -mt-8 -mx-8 mb-6 bg-[#F5F5F0] border-b border-[#B1B1A1] group/banner">
+                                      {nation.banner ? (
+                                        <img src={nation.banner} alt={nation.name} className="w-full h-full object-cover" />
+                                      ) : (
+                                        <div className="w-full h-full flex flex-col items-center justify-center text-[#D1D1C1] gap-2">
+                                          <ImageIcon size={48} />
+                                          <span className="text-xs font-bold uppercase tracking-widest">배너 이미지를 추가하세요</span>
+                                        </div>
+                                      )}
+                                      <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover/banner:opacity-100 transition-opacity cursor-pointer">
+                                        <div className="flex flex-col items-center text-white gap-2">
+                                          <Camera size={32} />
+                                          <span className="text-sm font-bold">이미지 업로드</span>
+                                        </div>
+                                        <input 
+                                          type="file" 
+                                          className="hidden" 
+                                          accept="image/*"
+                                          onChange={(e) => handleImageUpload(e, (base64) => {
+                                            const newNations = [...activeProject.nations];
+                                            newNations[idx] = { ...nation, banner: base64 };
+                                            updateActiveProject({ nations: newNations });
+                                          })}
+                                        />
+                                      </label>
+                                      {nation.banner && (
+                                        <button 
+                                          onClick={() => {
+                                            const newNations = [...activeProject.nations];
+                                            newNations[idx] = { ...nation, banner: undefined };
+                                            updateActiveProject({ nations: newNations });
+                                          }}
+                                          className="absolute top-4 left-4 p-2 bg-white/80 text-red-500 rounded-full opacity-0 group-hover/banner:opacity-100 transition-opacity hover:bg-white"
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">국가/지역명</label>
+                                      <input 
+                                        type="text"
+                                        value={nation.name}
+                                        onChange={(e) => {
+                                          const newNations = [...activeProject.nations];
+                                          newNations[idx] = { ...nation, name: e.target.value };
+                                          updateActiveProject({ nations: newNations });
+                                        }}
+                                        className="w-full text-2xl font-bold bg-transparent border-b border-[#D1D1C1] focus:border-[#3E5C45] outline-none transition-colors"
+                                      />
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-4">
+                                      {[
+                                        { id: 'era', label: '시대 배경', value: nation.era },
+                                        { id: 'space', label: '공간 배경', value: nation.space },
+                                        { id: 'races', label: '주요 종족', value: nation.races },
+                                        { id: 'history', label: '역사', value: nation.history },
+                                        { id: 'culture', label: '사회문화', value: nation.culture },
+                                        { id: 'environment', label: '환경', value: nation.environment },
+                                        { id: 'other', label: '기타 특징', value: nation.other }
+                                      ].map(field => (
+                                        <div key={field.id} className="flex flex-col md:flex-row md:items-start gap-4 border-b border-[#D1D1C1]/30 pb-4 last:border-0">
+                                          <label className="w-full md:w-32 text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold pt-2">{field.label}</label>
+                                          <AutoResizeTextarea 
+                                            value={field.value}
+                                            onChange={(e) => {
+                                              const newNations = [...activeProject.nations];
+                                              newNations[idx] = { ...nation, [field.id]: e.target.value };
+                                              updateActiveProject({ nations: newNations });
+                                            }}
+                                            className="flex-1 text-sm bg-[#F5F5F0] p-4 rounded-xl border border-[#D1D1C1] outline-none focus:border-[#3E5C45] transition-colors resize-none"
+                                            minHeight="44px"
+                                          />
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
-                                ))}
-                              </div>
+                                </SortableItem>
+                              ))}
                             </div>
-                          ))}
-                          {activeProject.nations.length === 0 && (
+                          </SortableContext>
+                        </DndContext>
+                        {activeProject.nations.length === 0 && (
                             <div className="h-[300px] border-2 border-dashed border-[#D1D1C1] rounded-2xl flex flex-col items-center justify-center text-[#8E8E7E] gap-4">
                               <Globe size={48} className="opacity-20" />
                               <p>국가나 지역을 추가하여 세계관을 구체화하세요</p>
                             </div>
                           )}
                         </div>
-                      </div>
-                    )}
+                      )}
                     {worldTab === 'orgs' && (
                       <div className="space-y-8">
                         <div className="flex items-center justify-end">
                           <button 
                             onClick={() => {
-                              const newOrg = { id: Date.now().toString(), name: '새 조직', purpose: '', structure: '', symbol: '', clothing: '', memberIds: [] };
+                              const newOrg: Organization = { id: Date.now().toString(), name: '새 조직', purpose: '', structure: '', symbol: '', clothing: '', memberIds: [] };
                               updateActiveProject({ organizations: [...activeProject.organizations, newOrg] });
                             }}
                             className="bg-[#3E5C45] text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-[#2E4C35] transition-colors"
@@ -1566,110 +1840,130 @@ export default function App() {
                             <Plus size={16} className="inline mr-2" /> 조직 추가
                           </button>
                         </div>
-                        <div className="space-y-6">
-                          {activeProject.organizations.map((org, idx) => (
-                            <div key={org.id} className="py-8 space-y-6 relative group border-b border-[#D1D1C1] last:border-0">
-                              <button 
-                                onClick={() => {
-                                  const newOrgs = [...activeProject.organizations];
-                                  newOrgs.splice(idx, 1);
-                                  updateActiveProject({ organizations: newOrgs });
-                                }}
-                                className="absolute top-6 right-0 p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
-                              >
-                                <Trash2 size={18} />
-                              </button>
-                              
-                              <div className="flex gap-8 items-start">
-                                <div className="space-y-2">
-                                  <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">단체 로고</label>
-                                  <div className="relative w-32 h-32 flex-shrink-0">
-                                    {org.logo ? (
-                                      <img src={org.logo} alt={org.name} className="w-full h-full object-cover rounded-2xl border border-[#D1D1C1]" />
-                                    ) : (
-                                      <div className="w-full h-full bg-white rounded-2xl border border-[#D1D1C1] flex items-center justify-center text-[#D1D1C1]">
-                                        <LayoutGrid size={32} />
+                        <DndContext 
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={(e) => handleDragEnd(e, 'organizations')}
+                          modifiers={[restrictToVerticalAxis]}
+                        >
+                          <SortableContext 
+                            items={activeProject.organizations.map(o => o.id)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            <div className="space-y-6">
+                              {activeProject.organizations.map((org, idx) => (
+                                <SortableItem key={org.id} id={org.id}>
+                                  <div className="p-8 bg-white rounded-[32px] border border-[#B1B1A1] space-y-6 relative group shadow-md hover:border-[#3E5C45]/30 transition-all">
+                                    <div className="absolute top-6 right-6 flex items-center gap-2">
+                                      <div className="p-2 text-[#D1D1C1] opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+                                        <GripVertical size={18} />
                                       </div>
-                                    )}
-                                    <label className="absolute -bottom-2 -right-2 p-2 bg-[#3E5C45] text-white rounded-full cursor-pointer shadow-md hover:scale-110 transition-transform">
-                                      <Edit3 size={12} />
-                                      <input 
-                                        type="file" 
-                                        className="hidden" 
-                                        accept="image/*"
-                                        onChange={(e) => handleImageUpload(e, (base64) => {
-                                          const newOrgs = [...activeProject.organizations];
-                                          newOrgs[idx] = { ...org, logo: base64 };
-                                          updateActiveProject({ organizations: newOrgs });
-                                        })}
-                                      />
-                                    </label>
-                                  </div>
-                                </div>
-                                <div className="flex-1 space-y-2">
-                                  <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">조직/단체명</label>
-                                  <input 
-                                    type="text"
-                                    value={org.name}
-                                    onChange={(e) => {
-                                      const newOrgs = [...activeProject.organizations];
-                                      newOrgs[idx] = { ...org, name: e.target.value };
-                                      updateActiveProject({ organizations: newOrgs });
-                                    }}
-                                    className="w-full text-2xl font-bold bg-transparent border-none outline-none focus:ring-0 p-0"
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-1 gap-4">
-                                {[
-                                  { id: 'purpose', label: '목적', value: org.purpose },
-                                  { id: 'structure', label: '구조', value: org.structure },
-                                  { id: 'symbol', label: '상징', value: org.symbol },
-                                  { id: 'clothing', label: '복장', value: org.clothing }
-                                ].map(field => (
-                                  <div key={field.id} className="flex flex-col md:flex-row md:items-start gap-4">
-                                    <label className="w-full md:w-32 text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold pt-2">{field.label}</label>
-                                    <AutoResizeTextarea 
-                                      value={field.value}
-                                      onChange={(e) => {
-                                        const newOrgs = [...activeProject.organizations];
-                                        newOrgs[idx] = { ...org, [field.id]: e.target.value };
-                                        updateActiveProject({ organizations: newOrgs });
-                                      }}
-                                      className="flex-1 text-sm bg-transparent p-0 border-none outline-none focus:ring-0 resize-none"
-                                      minHeight="44px"
-                                    />
-                                  </div>
-                                ))}
-                              </div>
-
-                              <div className="space-y-4">
-                                <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">소속 인물</label>
-                                <div className="flex flex-wrap gap-2">
-                                  {activeProject.characters.map(char => {
-                                    const isMember = org.memberIds.includes(char.id);
-                                    return (
-                                      <button
-                                        key={char.id}
+                                      <button 
                                         onClick={() => {
                                           const newOrgs = [...activeProject.organizations];
-                                          const newMemberIds = isMember 
-                                            ? org.memberIds.filter(id => id !== char.id)
-                                            : [...org.memberIds, char.id];
-                                          newOrgs[idx] = { ...org, memberIds: newMemberIds };
+                                          newOrgs.splice(idx, 1);
                                           updateActiveProject({ organizations: newOrgs });
                                         }}
-                                        className={`px-4 py-2 rounded-full text-xs font-bold transition-all border ${isMember ? 'bg-[#3E5C45] text-white border-[#3E5C45]' : 'bg-white text-[#8E8E7E] border-[#D1D1C1] hover:border-[#3E5C45]'}`}
+                                        className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
                                       >
-                                        {char.name}
+                                        <Trash2 size={18} />
                                       </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
+                                    </div>
+                                    
+                                    <div className="flex gap-8 items-start">
+                                      <div className="space-y-2">
+                                        <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">단체 로고</label>
+                                        <div className="relative w-32 h-32 flex-shrink-0">
+                                          {org.logo ? (
+                                            <img src={org.logo} alt={org.name} className="w-full h-full object-cover rounded-2xl border border-[#D1D1C1]" />
+                                          ) : (
+                                            <div className="w-full h-full bg-[#F5F5F0] rounded-2xl border border-[#D1D1C1] flex items-center justify-center text-[#D1D1C1]">
+                                              <LayoutGrid size={32} />
+                                            </div>
+                                          )}
+                                          <label className="absolute -bottom-2 -right-2 p-2 bg-[#3E5C45] text-white rounded-full cursor-pointer shadow-md hover:scale-110 transition-transform">
+                                            <Edit3 size={12} />
+                                            <input 
+                                              type="file" 
+                                              className="hidden" 
+                                              accept="image/*"
+                                              onChange={(e) => handleImageUpload(e, (base64) => {
+                                                const newOrgs = [...activeProject.organizations];
+                                                newOrgs[idx] = { ...org, logo: base64 };
+                                                updateActiveProject({ organizations: newOrgs });
+                                              })}
+                                            />
+                                          </label>
+                                        </div>
+                                      </div>
+                                      <div className="flex-1 space-y-2">
+                                        <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">조직/단체명</label>
+                                        <input 
+                                          type="text"
+                                          value={org.name}
+                                          onChange={(e) => {
+                                            const newOrgs = [...activeProject.organizations];
+                                            newOrgs[idx] = { ...org, name: e.target.value };
+                                            updateActiveProject({ organizations: newOrgs });
+                                          }}
+                                          className="w-full text-2xl font-bold bg-transparent border-b border-[#D1D1C1] focus:border-[#3E5C45] outline-none transition-colors"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-4">
+                                      {[
+                                        { id: 'purpose', label: '목적', value: org.purpose },
+                                        { id: 'structure', label: '구조', value: org.structure },
+                                        { id: 'symbol', label: '상징', value: org.symbol },
+                                        { id: 'clothing', label: '복장', value: org.clothing }
+                                      ].map(field => (
+                                        <div key={field.id} className="flex flex-col md:flex-row md:items-start gap-4 border-b border-[#D1D1C1]/30 pb-4 last:border-0">
+                                          <label className="w-full md:w-32 text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold pt-2">{field.label}</label>
+                                          <AutoResizeTextarea 
+                                            value={field.value}
+                                            onChange={(e) => {
+                                              const newOrgs = [...activeProject.organizations];
+                                              newOrgs[idx] = { ...org, [field.id]: e.target.value };
+                                              updateActiveProject({ organizations: newOrgs });
+                                            }}
+                                            className="flex-1 text-sm bg-[#F5F5F0] p-4 rounded-xl border border-[#D1D1C1] outline-none focus:border-[#3E5C45] transition-colors resize-none"
+                                            minHeight="44px"
+                                          />
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    <div className="space-y-4">
+                                      <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">소속 인물</label>
+                                      <div className="flex flex-wrap gap-2">
+                                        {activeProject.characters.map(char => {
+                                          const isMember = org.memberIds.includes(char.id);
+                                          return (
+                                            <button
+                                              key={char.id}
+                                              onClick={() => {
+                                                const newOrgs = [...activeProject.organizations];
+                                                const newMemberIds = isMember 
+                                                  ? org.memberIds.filter(id => id !== char.id)
+                                                  : [...org.memberIds, char.id];
+                                                newOrgs[idx] = { ...org, memberIds: newMemberIds };
+                                                updateActiveProject({ organizations: newOrgs });
+                                              }}
+                                              className={`px-4 py-2 rounded-full text-xs font-bold transition-all border ${isMember ? 'bg-[#3E5C45] text-white border-[#3E5C45]' : 'bg-white text-[#8E8E7E] border-[#D1D1C1] hover:border-[#3E5C45]'}`}
+                                            >
+                                              {char.name}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </SortableItem>
+                              ))}
                             </div>
-                          ))}
+                          </SortableContext>
+                        </DndContext>
                           {activeProject.organizations.length === 0 && (
                             <div className="h-[300px] border-2 border-dashed border-[#D1D1C1] rounded-2xl flex flex-col items-center justify-center text-[#8E8E7E] gap-4">
                               <LayoutGrid size={48} className="opacity-20" />
@@ -1677,11 +1971,10 @@ export default function App() {
                             </div>
                           )}
                         </div>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
+                      )}
+                    </div>
+                  </motion.div>
+                )}
 
               {view === 'characterSettings' && (
                 <motion.div 
@@ -1727,24 +2020,24 @@ export default function App() {
                             <input 
                               type="file" 
                               className="hidden" 
-                              accept="image/*"
                               multiple
+                              accept="image/*"
                               onChange={(e) => handleMultipleImagesUpload(e, (base64s) => {
-                                updateActiveProject({ relationshipImages: [...activeProject.relationshipImages, ...base64s] });
+                                updateActiveProject({ relationshipImages: [...(activeProject.relationshipImages || []), ...base64s] });
                               })}
                             />
                           </label>
                         </div>
                         
                         <div className="space-y-4">
-                          {activeProject.relationshipImages.map((img, idx) => (
+                          {(activeProject.relationshipImages || []).map((img, idx) => (
                             <div key={idx} className="relative group">
-                              <img src={img} alt={`Relationship ${idx}`} className="w-full rounded-2xl border border-[#D1D1C1]" />
+                              <img src={img} alt={`Relationship ${idx + 1}`} className="w-full rounded-2xl border border-[#D1D1C1]" />
                               <button 
                                 onClick={() => {
-                                  const newImgs = [...activeProject.relationshipImages];
-                                  newImgs.splice(idx, 1);
-                                  updateActiveProject({ relationshipImages: newImgs });
+                                  const newImages = [...activeProject.relationshipImages];
+                                  newImages.splice(idx, 1);
+                                  updateActiveProject({ relationshipImages: newImages });
                                 }}
                                 className="absolute top-4 right-4 p-2 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                               >
@@ -1752,7 +2045,7 @@ export default function App() {
                               </button>
                             </div>
                           ))}
-                          {activeProject.relationshipImages.length === 0 && (
+                          {(!activeProject.relationshipImages || activeProject.relationshipImages.length === 0) && (
                             <div className="h-[300px] border-2 border-dashed border-[#D1D1C1] rounded-2xl flex flex-col items-center justify-center text-[#8E8E7E] gap-4">
                               <Network size={48} className="opacity-20" />
                               <p>인물 관계도 이미지를 업로드하세요</p>
@@ -1761,7 +2054,6 @@ export default function App() {
                         </div>
                       </div>
                     )}
-
                     {characterTab === 'list' && (
                       <div className="space-y-8">
                         <div className="flex items-center justify-end">
@@ -1776,169 +2068,183 @@ export default function App() {
                           </button>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-6">
-                          {activeProject.characters.map((char, idx) => (
-                            <div key={char.id} className="flex gap-8 items-start group relative">
-                              <button 
-                                onClick={() => {
-                                  const newChars = activeProject.characters.filter(c => c.id !== char.id);
-                                  updateActiveProject({ characters: newChars });
-                                }}
-                                className="absolute top-6 right-6 p-2 text-[#D1D1C1] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <Trash2 size={18} />
-                              </button>
-
-                              <div className="relative w-32 h-32 flex-shrink-0">
-                                {char.image ? (
-                                  <img src={char.image} alt={char.name} className="w-full h-full object-cover rounded-2xl border border-[#D1D1C1]" />
-                                ) : (
-                                  <div className="w-full h-full bg-white rounded-2xl border border-[#D1D1C1] flex items-center justify-center text-[#D1D1C1]">
-                                    <Users size={48} />
-                                  </div>
-                                )}
-                                <label className="absolute -bottom-2 -right-2 p-2 bg-[#3E5C45] text-white rounded-full cursor-pointer shadow-md hover:scale-110 transition-transform">
-                                  <Edit3 size={12} />
-                                  <input 
-                                    type="file" 
-                                    className="hidden" 
-                                    accept="image/*"
-                                    onChange={(e) => handleImageUpload(e, (base64) => {
-                                      const newChars = [...activeProject.characters];
-                                      newChars[idx] = { ...char, image: base64 };
-                                      updateActiveProject({ characters: newChars });
-                                    })}
-                                  />
-                                </label>
-                              </div>
-
-                              <div className="flex-1 space-y-6">
-                                <div className="flex gap-6 items-end">
-                                  <div className="flex-1 space-y-2">
-                                    <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">이름</label>
-                                    <input 
-                                      type="text"
-                                      value={char.name}
-                                      onChange={(e) => {
-                                        const newChars = [...activeProject.characters];
-                                        newChars[idx] = { ...char, name: e.target.value };
-                                        updateActiveProject({ characters: newChars });
-                                      }}
-                                      className="w-full text-2xl font-bold bg-transparent border-none outline-none focus:ring-0 p-0"
-                                      placeholder="이름을 입력하세요"
-                                    />
-                                  </div>
-                                  <div className="flex-1 space-y-2">
-                                    <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">역할</label>
-                                    <input 
-                                      type="text"
-                                      value={char.role}
-                                      onChange={(e) => {
-                                        const newChars = [...activeProject.characters];
-                                        newChars[idx] = { ...char, role: e.target.value };
-                                        updateActiveProject({ characters: newChars });
-                                      }}
-                                      className="w-full text-lg font-medium text-[#3E5C45] bg-transparent border-none outline-none focus:ring-0 p-0"
-                                      placeholder="역할 (예: 주인공, 조연)"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className="space-y-4">
-                                  <div className="flex items-center justify-between border-b border-[#D1D1C1] pb-2">
-                                    <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">정보란</label>
-                                    <button 
-                                      onClick={() => {
-                                        const newChars = [...activeProject.characters];
-                                        const newInfoItems = [...(char.infoItems || []), { label: '새 항목', value: '' }];
-                                        newChars[idx] = { ...char, infoItems: newInfoItems };
-                                        updateActiveProject({ characters: newChars });
-                                      }}
-                                      className="text-[10px] bg-[#3E5C45] text-white px-2 py-1 rounded-full hover:bg-[#2E4C35] transition-colors"
-                                    >
-                                      항목 추가
-                                    </button>
-                                  </div>
-                                  
-                                  <div className="grid grid-cols-1 gap-4">
-                                    {[
-                                      { id: 'personality', label: '성격', value: char.personality },
-                                      { id: 'appearance', label: '외양', value: char.appearance },
-                                      { id: 'ability', label: '능력', value: char.ability },
-                                      { id: 'specialNotes', label: '기타 특이사항', value: char.specialNotes }
-                                    ].map(field => (
-                                      <div key={field.id} className="flex flex-col md:flex-row md:items-start gap-4 border-b border-[#D1D1C1]/30 pb-4 last:border-0">
-                                        <label className="w-full md:w-32 text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold pt-2">{field.label}</label>
-                                        <AutoResizeTextarea 
-                                          value={field.value || ''}
-                                          onChange={(e) => {
-                                            const newChars = [...activeProject.characters];
-                                            newChars[idx] = { ...char, [field.id]: e.target.value };
-                                            updateActiveProject({ characters: newChars });
-                                          }}
-                                          className="flex-1 text-sm bg-white p-4 rounded-xl border border-[#D1D1C1] outline-none focus:border-[#3E5C45] transition-colors resize-none"
-                                          minHeight="44px"
-                                        />
+                        <DndContext 
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={(e) => handleDragEnd(e, 'characters')}
+                          modifiers={[restrictToVerticalAxis]}
+                        >
+                          <SortableContext 
+                            items={activeProject.characters.map(c => c.id)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            <div className="grid grid-cols-1 gap-6">
+                              {activeProject.characters.map((char, idx) => (
+                                <SortableItem key={char.id} id={char.id}>
+                                  <div className="p-8 bg-white rounded-[32px] border border-[#B1B1A1] shadow-md flex gap-8 items-start group relative hover:border-[#3E5C45]/30 transition-all">
+                                    <div className="absolute top-6 right-6 flex items-center gap-2">
+                                      <div className="p-2 text-[#D1D1C1] opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+                                        <GripVertical size={18} />
                                       </div>
-                                    ))}
-                                    
-                                    {(char.infoItems || []).map((item, itemIdx) => (
-                                      <div key={itemIdx} className="flex flex-col md:flex-row md:items-start gap-4 border-b border-[#D1D1C1]/30 pb-4 group/item">
-                                        <div className="w-full md:w-32 space-y-1">
+                                      <button 
+                                        onClick={() => {
+                                          const newChars = activeProject.characters.filter(c => c.id !== char.id);
+                                          updateActiveProject({ characters: newChars });
+                                        }}
+                                        className="p-2 text-[#D1D1C1] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <Trash2 size={18} />
+                                      </button>
+                                    </div>
+
+                                    <div className="relative w-32 h-32 flex-shrink-0">
+                                      {char.image ? (
+                                        <img src={char.image} alt={char.name} className="w-full h-full object-cover rounded-2xl border border-[#D1D1C1]" />
+                                      ) : (
+                                        <div className="w-full h-full bg-[#F5F5F0] rounded-2xl border border-[#D1D1C1] flex items-center justify-center text-[#D1D1C1]">
+                                          <Users size={48} />
+                                        </div>
+                                      )}
+                                      <label className="absolute -bottom-2 -right-2 p-2 bg-[#3E5C45] text-white rounded-full cursor-pointer shadow-md hover:scale-110 transition-transform">
+                                        <Edit3 size={12} />
+                                        <input 
+                                          type="file" 
+                                          className="hidden" 
+                                          accept="image/*"
+                                          onChange={(e) => handleImageUpload(e, (base64) => {
+                                            const newChars = [...activeProject.characters];
+                                            newChars[idx] = { ...char, image: base64 };
+                                            updateActiveProject({ characters: newChars });
+                                          })}
+                                        />
+                                      </label>
+                                    </div>
+
+                                    <div className="flex-1 space-y-6">
+                                      <div className="flex gap-6 items-end">
+                                        <div className="flex-1 space-y-2">
+                                          <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">이름</label>
                                           <input 
                                             type="text"
-                                            value={item.label}
+                                            value={char.name}
                                             onChange={(e) => {
                                               const newChars = [...activeProject.characters];
-                                              const newInfoItems = [...(char.infoItems || [])];
-                                              newInfoItems[itemIdx] = { ...item, label: e.target.value };
-                                              newChars[idx] = { ...char, infoItems: newInfoItems };
+                                              newChars[idx] = { ...char, name: e.target.value };
                                               updateActiveProject({ characters: newChars });
                                             }}
-                                            className="w-full text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold bg-transparent border-none outline-none focus:text-[#3E5C45]"
+                                            className="w-full text-2xl font-bold bg-transparent border-b border-[#D1D1C1] focus:border-[#3E5C45] outline-none transition-colors"
+                                            placeholder="이름을 입력하세요"
                                           />
+                                        </div>
+                                        <div className="flex-1 space-y-2">
+                                          <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">역할</label>
+                                          <input 
+                                            type="text"
+                                            value={char.role}
+                                            onChange={(e) => {
+                                              const newChars = [...activeProject.characters];
+                                              newChars[idx] = { ...char, role: e.target.value };
+                                              updateActiveProject({ characters: newChars });
+                                            }}
+                                            className="w-full text-lg font-medium text-[#3E5C45] bg-transparent border-b border-[#D1D1C1] focus:border-[#3E5C45] outline-none transition-colors"
+                                            placeholder="역할 (예: 주인공, 조연)"
+                                          />
+                                        </div>
+                                      </div>
+
+                                      <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b border-[#D1D1C1] pb-2">
+                                          <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">정보란</label>
                                           <button 
                                             onClick={() => {
                                               const newChars = [...activeProject.characters];
-                                              const newInfoItems = char.infoItems?.filter((_, i) => i !== itemIdx);
+                                              const newInfoItems = [...(char.infoItems || []), { label: '새 항목', value: '' }];
                                               newChars[idx] = { ...char, infoItems: newInfoItems };
                                               updateActiveProject({ characters: newChars });
                                             }}
-                                            className="text-[8px] text-red-400 opacity-0 group-hover/item:opacity-100 hover:text-red-600 transition-all"
+                                            className="text-[10px] bg-[#3E5C45] text-white px-2 py-1 rounded-full hover:bg-[#2E4C35] transition-colors"
                                           >
-                                            삭제
+                                            항목 추가
                                           </button>
                                         </div>
-                                        <AutoResizeTextarea 
-                                          value={item.value}
-                                          onChange={(e) => {
-                                            const newChars = [...activeProject.characters];
-                                            const newInfoItems = [...(char.infoItems || [])];
-                                            newInfoItems[itemIdx] = { ...item, value: e.target.value };
-                                            newChars[idx] = { ...char, infoItems: newInfoItems };
-                                            updateActiveProject({ characters: newChars });
-                                          }}
-                                          className="flex-1 text-sm bg-transparent p-0 border-none outline-none focus:ring-0 resize-none"
-                                          minHeight="44px"
-                                        />
+                                        
+                                        <div className="grid grid-cols-1 gap-4">
+                                          {[
+                                            { id: 'personality', label: '성격', value: char.personality },
+                                            { id: 'appearance', label: '외양', value: char.appearance },
+                                            { id: 'ability', label: '능력', value: char.ability },
+                                            { id: 'specialNotes', label: '기타 특이사항', value: char.specialNotes }
+                                          ].map(field => (
+                                            <div key={field.id} className="flex flex-col md:flex-row md:items-start gap-4 border-b border-[#D1D1C1]/30 pb-4 last:border-0">
+                                              <label className="w-full md:w-32 text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold pt-2">{field.label}</label>
+                                              <AutoResizeTextarea 
+                                                value={field.value || ''}
+                                                onChange={(e) => {
+                                                  const newChars = [...activeProject.characters];
+                                                  newChars[idx] = { ...char, [field.id]: e.target.value };
+                                                  updateActiveProject({ characters: newChars });
+                                                }}
+                                                className="flex-1 text-sm bg-[#F5F5F0] p-4 rounded-xl border border-[#D1D1C1] outline-none focus:border-[#3E5C45] transition-colors resize-none"
+                                                minHeight="44px"
+                                              />
+                                            </div>
+                                          ))}
+                                          
+                                          {(char.infoItems || []).map((item, itemIdx) => (
+                                            <div key={itemIdx} className="flex flex-col md:flex-row md:items-start gap-4 border-b border-[#D1D1C1]/30 pb-4 group/item">
+                                              <div className="w-full md:w-32 space-y-1">
+                                                <input 
+                                                  type="text"
+                                                  value={item.label}
+                                                  onChange={(e) => {
+                                                    const newChars = [...activeProject.characters];
+                                                    const newInfoItems = [...(char.infoItems || [])];
+                                                    newInfoItems[itemIdx] = { ...item, label: e.target.value };
+                                                    newChars[idx] = { ...char, infoItems: newInfoItems };
+                                                    updateActiveProject({ characters: newChars });
+                                                  }}
+                                                  className="w-full text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold bg-transparent border-none outline-none focus:text-[#3E5C45]"
+                                                />
+                                                <button 
+                                                  onClick={() => {
+                                                    const newChars = [...activeProject.characters];
+                                                    const newInfoItems = char.infoItems?.filter((_, i) => i !== itemIdx);
+                                                    newChars[idx] = { ...char, infoItems: newInfoItems };
+                                                    updateActiveProject({ characters: newChars });
+                                                  }}
+                                                  className="text-[8px] text-red-400 opacity-0 group-hover/item:opacity-100 hover:text-red-600 transition-all"
+                                                >
+                                                  삭제
+                                                </button>
+                                              </div>
+                                              <AutoResizeTextarea 
+                                                value={item.value}
+                                                onChange={(e) => {
+                                                  const newChars = [...activeProject.characters];
+                                                  const newInfoItems = [...(char.infoItems || [])];
+                                                  newInfoItems[itemIdx] = { ...item, value: e.target.value };
+                                                  newChars[idx] = { ...char, infoItems: newInfoItems };
+                                                  updateActiveProject({ characters: newChars });
+                                                }}
+                                                className="flex-1 text-sm bg-[#F5F5F0] p-4 rounded-xl border border-[#D1D1C1] outline-none focus:border-[#3E5C45] transition-colors resize-none"
+                                                minHeight="44px"
+                                              />
+                                            </div>
+                                          ))}
+                                        </div>
                                       </div>
-                                    ))}
+                                    </div>
                                   </div>
-                                </div>
-                              </div>
+                                </SortableItem>
+                              ))}
                             </div>
-                          ))}
-                          {activeProject.characters.length === 0 && (
-                            <div className="text-center py-12 text-[#8E8E7E] italic">
-                              아직 등록된 캐릭터가 없습니다.
-                            </div>
-                          )}
+                          </SortableContext>
+                        </DndContext>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
+                      )}
+                    </div>
+                  </motion.div>
+                )}
 
               {view === 'storyDevelopment' && (
                 <motion.div 
@@ -1954,7 +2260,7 @@ export default function App() {
                   </div>
 
                   {/* Synopsis Summary */}
-                  <div className="p-8 bg-[#F5F5F0] rounded-[32px] border border-[#D1D1C1] space-y-4">
+                  <div className="p-8 bg-[#F5F5F0] rounded-[32px] border border-[#B1B1A1] space-y-4">
                     <div className="flex items-center gap-2 text-[#3E5C45]">
                       <BookOpen size={18} />
                       <label className="text-xs uppercase tracking-widest font-sans font-bold">요약 시놉시스 (기본 설정)</label>
@@ -1986,7 +2292,7 @@ export default function App() {
                               <div key={chapter.id} className="group bg-white p-8 rounded-[32px] border border-[#D1D1C1] shadow-sm hover:shadow-md transition-all space-y-4">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-3">
-                                    <span className="text-xl font-bold text-[#3E5C45]">
+                                    <span className="text-xl font-bold text-[#3E5C45] whitespace-nowrap">
                                       {chapterNumber}장:
                                     </span>
                                     <input 
@@ -1994,10 +2300,13 @@ export default function App() {
                                       value={chapter.title}
                                       onChange={(e) => {
                                         const newActs = [...activeProject.storyActs];
-                                        newActs[actIdx].chapters[chapIdx] = { ...chapter, title: e.target.value };
+                                        let newTitle = e.target.value;
+                                        // Remove redundant "N장:" if the user typed it
+                                        newTitle = newTitle.replace(new RegExp(`^${chapterNumber}장[:\s]*`), '');
+                                        newActs[actIdx].chapters[chapIdx] = { ...chapter, title: newTitle };
                                         updateActiveProject({ storyActs: newActs });
                                       }}
-                                      className="text-xl font-bold bg-transparent border-none outline-none focus:ring-0 p-0"
+                                      className="text-xl font-bold bg-transparent border-none outline-none focus:ring-0 p-0 w-full"
                                       placeholder="장 제목"
                                     />
                                   </div>
@@ -2033,7 +2342,7 @@ export default function App() {
                 >
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div className="flex items-center gap-3">
-                      <Image size={32} className="text-[#3E5C45]" />
+                      <ImageIcon size={32} className="text-[#3E5C45]" />
                       <h2 className="text-4xl font-bold">레퍼런스 보드</h2>
                     </div>
                     <div className="flex items-center gap-4">
@@ -2159,7 +2468,7 @@ export default function App() {
 
                     {(activeProject.referenceCategories || []).length === 0 && (
                       <div className="h-[400px] border-2 border-dashed border-[#D1D1C1] rounded-[40px] flex flex-col items-center justify-center text-[#8E8E7E] gap-4 bg-white/50">
-                        <Image size={64} className="opacity-10" />
+                        <ImageIcon size={64} className="opacity-10" />
                         <div className="text-center space-y-2">
                           <p className="text-xl font-bold">레퍼런스 보드가 비어있습니다</p>
                           <p className="text-sm">카테고리를 생성하고 이미지를 업로드하여 영감을 기록하세요</p>
@@ -2173,7 +2482,10 @@ export default function App() {
                                 name,
                                 images: []
                               };
-                              updateActiveProject({ referenceCategories: [...(activeProject.referenceCategories || []), newCat] });
+                              setProjects(prev => prev.map(p => p.id === activeProjectId ? {
+                                ...p,
+                                referenceCategories: [...(p.referenceCategories || []), newCat]
+                              } : p));
                             }
                           }}
                           className="mt-4 flex items-center gap-2 bg-[#3E5C45] text-white px-6 py-3 rounded-full font-bold hover:bg-[#2E4C35] transition-all shadow-md"
@@ -2182,67 +2494,6 @@ export default function App() {
                         </button>
                       </div>
                     )}
-                  </div>
-                </motion.div>
-              )}
-
-              {view === 'summaryView' && (
-                <motion.div 
-                  key="summaryView"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className="space-y-12"
-                >
-                  <div className="flex items-center gap-3">
-                    <LayoutGrid size={32} className="text-[#5A5A40]" />
-                    <h2 className="text-4xl font-bold">요약보기</h2>
-                  </div>
-
-                  <div className="space-y-12">
-                    <section className="space-y-6">
-                      <h3 className="text-2xl font-bold text-[#5A5A40] border-b border-[#D1D1C1] pb-2">시즌별 트리트먼트</h3>
-                      <div className="space-y-8">
-                        {activeProject.seasons.map(season => (
-                          <div key={season.id} className="p-8 bg-white rounded-[32px] border border-[#D1D1C1] shadow-sm space-y-4">
-                            <h4 className="text-xl font-bold">{season.title}</h4>
-                            <AutoResizeTextarea 
-                              value={season.treatment}
-                              onChange={(e) => updateSeason(season.id, { treatment: e.target.value })}
-                              className="text-base leading-relaxed text-[#4A4A4A] bg-transparent border-none outline-none focus:ring-0 p-0"
-                              placeholder="트리트먼트 내용이 없습니다."
-                            />
-                          </div>
-                        ))}
-                        {activeProject.seasons.length === 0 && (
-                          <p className="text-[#8E8E7E] italic">등록된 시즌이 없습니다.</p>
-                        )}
-                      </div>
-                    </section>
-
-                    <section className="space-y-6">
-                      <h3 className="text-2xl font-bold text-[#5A5A40] border-b border-[#D1D1C1] pb-2">챕터 개요 / 노트</h3>
-                      <div className="space-y-8">
-                        {activeProject.seasons.map(season => (
-                          <div key={season.id} className="space-y-4">
-                            <h4 className="text-lg font-bold text-[#8E8E7E] uppercase tracking-widest">{season.title}</h4>
-                            <div className="grid grid-cols-1 gap-4">
-                              {season.chapters.map(chapter => (
-                                <div key={chapter.id} className="p-6 bg-white rounded-2xl border border-[#D1D1C1] shadow-sm space-y-2">
-                                  <h5 className="font-bold text-[#1A1A1A]">{chapter.title}</h5>
-                                  <AutoResizeTextarea 
-                                    value={chapter.content}
-                                    onChange={(e) => updateChapter(season.id, chapter.id, { content: e.target.value })}
-                                    className="text-sm leading-relaxed text-[#4A4A4A] bg-transparent border-none outline-none focus:ring-0 p-0"
-                                    placeholder="개요 내용이 없습니다."
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
                   </div>
                 </motion.div>
               )}
@@ -2524,27 +2775,40 @@ export default function App() {
                       </div>
                       
                       <div className="space-y-4">
-                        {activeEpisode.cuts?.map((cut, index) => (
-                          <div key={cut.id} className="flex gap-4 group">
-                            <div className="flex-shrink-0 w-12 h-12 bg-[#E6E6D6] rounded-full flex items-center justify-center font-bold text-[#5A5A40] font-sans text-xs">
-                              {index + 1}컷
-                            </div>
-                            <div className="flex-1 relative">
-                              <AutoResizeTextarea 
-                                value={cut.content}
-                                onChange={(e) => updateCut(activeSeason.id, activeChapter.id, activeEpisode.id, cut.id, e.target.value)}
-                                className="w-full min-h-[100px] bg-white p-6 rounded-[24px] border border-[#D1D1C1] shadow-sm outline-none focus:border-[#5A5A40] transition-colors placeholder-[#D1D1C1] font-sans"
-                                placeholder={`${index + 1}컷 내용을 입력하세요...`}
-                              />
-                              <button 
-                                onClick={() => deleteCut(activeSeason.id, activeChapter.id, activeEpisode.id, cut.id)}
-                                className="absolute top-4 right-4 p-2 text-[#D1D1C1] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                        <DndContext 
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={(e) => handleCutDragEnd(e, activeSeason.id, activeChapter.id, activeEpisode.id)}
+                        >
+                          <SortableContext 
+                            items={activeEpisode.cuts?.map(c => c.id) || []}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            {activeEpisode.cuts?.map((cut, index) => (
+                              <SortableItem key={cut.id} id={cut.id}>
+                                <div className="flex gap-4 group">
+                                  <div className="flex-shrink-0 w-12 h-12 bg-[#E6E6D6] rounded-full flex items-center justify-center font-bold text-[#5A5A40] font-sans text-xs">
+                                    {index + 1}컷
+                                  </div>
+                                  <div className="flex-1 relative">
+                                    <AutoResizeTextarea 
+                                      value={cut.content}
+                                      onChange={(e) => updateCut(activeSeason.id, activeChapter.id, activeEpisode.id, cut.id, e.target.value)}
+                                      className="w-full min-h-[100px] bg-white p-6 rounded-[24px] border border-[#D1D1C1] shadow-sm outline-none focus:border-[#5A5A40] transition-colors placeholder-[#D1D1C1] font-sans"
+                                      placeholder={`${index + 1}컷 내용을 입력하세요...`}
+                                    />
+                                    <button 
+                                      onClick={() => deleteCut(activeSeason.id, activeChapter.id, activeEpisode.id, cut.id)}
+                                      className="absolute top-4 right-4 p-2 text-[#D1D1C1] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </div>
+                                </div>
+                              </SortableItem>
+                            ))}
+                          </SortableContext>
+                        </DndContext>
                         {(!activeEpisode.cuts || activeEpisode.cuts.length === 0) && (
                           <div className="text-center py-12 border-2 border-dashed border-[#D1D1C1] rounded-[40px] text-[#8E8E7E] font-sans italic">
                             아직 추가된 컷이 없습니다. '컷 추가' 버튼을 눌러보세요.

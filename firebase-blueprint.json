@@ -1,0 +1,23 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "User's story project data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "data": { "type": "string", "description": "JSON stringified project object" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "title", "data", "updatedAt", "userId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/projects/{projectId}": {
+      "schema": "Project",
+      "description": "User's stored projects"
+    }
+  }
+}

@@ -51,6 +51,7 @@ export interface Character {
 export interface Nation {
   id: string;
   name: string;
+  banner?: string;
   era: string;
   space: string;
   races: string;
