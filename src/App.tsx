@@ -2141,7 +2141,19 @@ export default function App() {
                         <div className="flex items-center justify-end">
                           <button 
                             onClick={() => {
-                              const newChar = { id: Date.now().toString(), name: '새 캐릭터', role: '', description: '', infoItems: [] };
+                              const newChar = { 
+                                id: Date.now().toString(), 
+                                name: '새 캐릭터', 
+                                role: '', 
+                                description: '', 
+                                personality: '', 
+                                appearance: '', 
+                                ability: '', 
+                                desire: '', 
+                                belief: '', 
+                                specialNotes: '', 
+                                infoItems: [] 
+                              };
                               updateActiveProject({ characters: [...activeProject.characters, newChar] });
                             }}
                             className="bg-[#3E5C45] text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-[#2E4C35] transition-colors"
@@ -2252,6 +2264,8 @@ export default function App() {
                                         
                                         <div className="grid grid-cols-1 gap-4">
                                           {[
+                                            { id: 'desire', label: '욕망(목표)', value: char.desire },
+                                            { id: 'belief', label: '신념', value: char.belief },
                                             { id: 'personality', label: '성격', value: char.personality },
                                             { id: 'appearance', label: '외양', value: char.appearance },
                                             { id: 'ability', label: '능력', value: char.ability },
@@ -2294,8 +2308,9 @@ export default function App() {
                                                     newChars[idx] = { ...char, infoItems: newInfoItems };
                                                     updateActiveProject({ characters: newChars });
                                                   }}
-                                                  className="text-[8px] text-red-400 opacity-0 group-hover/item:opacity-100 hover:text-red-600 transition-all"
+                                                  className="text-[10px] text-red-500 hover:text-red-700 transition-all flex items-center gap-1 mt-1"
                                                 >
+                                                  <Trash2 size={10} />
                                                   삭제
                                                 </button>
                                               </div>
