@@ -78,7 +78,18 @@ const SortableItem: React.FC<{ id: string; children: React.ReactNode }> = ({ id,
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div 
+      ref={setNodeRef} 
+      style={style} 
+      {...attributes} 
+      {...listeners}
+      onKeyDown={(e) => {
+        if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+          return;
+        }
+        listeners?.onKeyDown?.(e);
+      }}
+    >
       {children}
     </div>
   );
