@@ -83,11 +83,10 @@ const SortableItem: React.FC<{ id: string; children: React.ReactNode }> = ({ id,
       style={style} 
       {...attributes} 
       {...listeners}
-      onKeyDown={(e) => {
+      onKeyDownCapture={(e) => {
         if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
-          return;
+          e.stopPropagation();
         }
-        listeners?.onKeyDown?.(e);
       }}
     >
       {children}
@@ -414,6 +413,16 @@ export default function App() {
     message: string;
     onConfirm: () => void;
   } | null>(null);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === ' ' && (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName))) {
+        e.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
