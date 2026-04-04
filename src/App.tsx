@@ -8,6 +8,7 @@ import {
   Plus, 
   ChevronRight, 
   ChevronLeft, 
+  ChevronDown,
   BookOpen, 
   Layers, 
   FileText, 
@@ -115,6 +116,10 @@ const createInitialProject = (title: string = '새로운 프로젝트'): Project
   organizations: [],
   relationshipImages: [],
   characters: [],
+  ki: '',
+  seung: '',
+  jeon: '',
+  gyeol: '',
   storyActs: [
     { 
       id: 'act1', 
@@ -150,6 +155,7 @@ const createInitialProject = (title: string = '새로운 프로젝트'): Project
       ] 
     },
   ],
+  scriptPhotos: [],
   basicSettings: '',
   worldSettings: '',
   characterSettings: '',
@@ -157,23 +163,6 @@ const createInitialProject = (title: string = '새로운 프로젝트'): Project
   memo: '',
   progress: 0,
   timeline: [],
-  seasons: [
-    {
-      id: 's1',
-      title: '시즌 1',
-      treatment: '',
-      chapters: [
-        {
-          id: 'c1',
-          title: '챕터 1',
-          content: '',
-          episodes: [
-            { id: 'e1', title: '1화', content: '', cuts: [] }
-          ]
-        }
-      ]
-    }
-  ],
   referenceCategories: []
 });
 
@@ -308,7 +297,7 @@ export default function App() {
           relationshipImages: Array.isArray(p.relationshipImages) ? p.relationshipImages : [],
           characters: Array.isArray(p.characters) ? p.characters : [],
           storyActs: Array.isArray(p.storyActs) ? p.storyActs : defaultProject.storyActs,
-          seasons: Array.isArray(p.seasons) ? p.seasons : defaultProject.seasons,
+          scriptPhotos: Array.isArray(p.scriptPhotos) ? p.scriptPhotos : [],
           nations: Array.isArray(p.nations) ? p.nations : [],
           organizations: Array.isArray(p.organizations) ? p.organizations : [],
           progress: typeof p.progress === 'number' ? p.progress : 0,
@@ -894,6 +883,38 @@ export default function App() {
               </div>
             `).join('') : '<p style="color: #8E8E7E; font-style: italic;">등록된 캐릭터가 없습니다.</p>'}
           </div>
+        <div style="margin-bottom: 60px; background: white; padding: 40px; border-radius: 32px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); border: 1px solid #D1D1C1;">
+          <h2 style="font-size: 32px; color: #1A1A1A; margin-bottom: 32px; font-weight: 300;">기승전결 정리</h2>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            ${[
+              { label: '기 (Introduction)', value: activeProject.ki },
+              { label: '승 (Development)', value: activeProject.seung },
+              { label: '전 (Turn)', value: activeProject.jeon },
+              { label: '결 (Conclusion)', value: activeProject.gyeol }
+            ].map(f => `
+              <div style="padding: 24px; background: #F5F5F0; border-radius: 24px;">
+                <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #8E8E7E; font-weight: bold; margin-bottom: 8px;">${f.label}</label>
+                <div style="font-size: 15px; line-height: 1.6; color: #1A1A1A; white-space: pre-wrap;">${f.value || ''}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div style="margin-bottom: 60px; background: white; padding: 40px; border-radius: 32px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); border: 1px solid #D1D1C1;">
+          <h2 style="font-size: 32px; color: #1A1A1A; margin-bottom: 32px; font-weight: 300;">스토리 전개 (3막 15장)</h2>
+          ${activeProject.storyActs.map(act => `
+            <div style="margin-bottom: 32px;">
+              <h3 style="font-size: 24px; color: #3E5C45; margin-bottom: 16px; border-bottom: 2px solid #3E5C45; display: inline-block; padding-bottom: 4px;">${act.title}</h3>
+              <div style="display: flex; flex-direction: column; gap: 16px;">
+                ${act.chapters.map(chap => `
+                  <div style="padding: 20px; background: #F5F5F0; border-radius: 16px; border: 1px solid #D1D1C1;">
+                    <h4 style="font-size: 18px; margin: 0 0 8px 0; font-weight: 600;">${chap.title}</h4>
+                    <div style="font-size: 15px; line-height: 1.6; color: #4A4A4A; white-space: pre-wrap;">${chap.content || ''}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
         </div>
       `;
     } else {
@@ -1298,15 +1319,12 @@ export default function App() {
               ) : (
                 <div className="space-y-6">
                   <div className="space-y-2">
-                    <div className="flex justify-between items-center px-3 mb-2">
-                      <span className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">시작하기</span>
-                    </div>
                     <button 
-                      onClick={() => setShowMindMap(true)}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors hover:bg-[#F5F5F0]"
+                      onClick={() => setView('scriptPhotos')}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${view === 'scriptPhotos' ? 'bg-[#5A5A40] text-white' : 'hover:bg-[#F5F5F0]'}`}
                     >
-                      <Network size={18} />
-                      <span className="font-medium">마인드맵 보기</span>
+                      <ImageIcon size={18} />
+                      <span className="font-medium">글콘티 사진</span>
                     </button>
                     <button 
                       onClick={() => setView('timeline')}
@@ -1315,114 +1333,19 @@ export default function App() {
                       <LayoutGrid size={18} />
                       <span className="font-medium">타임라인</span>
                     </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center px-3 mb-2">
-                      <span className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">시즌</span>
-                      <div className="flex items-center gap-1">
-                        <button 
-                          onClick={() => setView('seasonTreatments')}
-                          className={`p-1 rounded-full transition-colors ${view === 'seasonTreatments' ? 'bg-[#5A5A40] text-white' : 'hover:bg-[#F5F5F0] text-[#8E8E7E]'}`}
-                          title="시즌별 트리트먼트 모아보기"
-                        >
-                          <BookOpen size={16} />
-                        </button>
-                        <button onClick={addSeason} className="p-1 hover:bg-[#F5F5F0] rounded-full text-[#5A5A40]">
-                          <Plus size={16} />
-                        </button>
-                      </div>
-                    </div>
-                    {activeProject.seasons.map(season => (
-                      <div key={season.id} className="space-y-1">
-                        <div 
-                          role="button"
-                          onClick={() => {
-                            setActiveSeasonId(season.id);
-                            setView('season');
-                          }}
-                          className={`w-full flex items-center justify-between p-3 rounded-xl transition-colors cursor-pointer group ${view === 'season' && activeSeasonId === season.id ? 'bg-[#5A5A40] text-white' : 'hover:bg-[#F5F5F0]'}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <Layers size={18} />
-                            <span className="truncate">{season.title}</span>
-                          </div>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); deleteSeason(season.id); }}
-                            className="p-1 text-[#D1D1C1] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-
-                        {activeSeasonId === season.id && (
-                          <div className="ml-6 space-y-1 border-l-2 border-[#D1D1C1] pl-2">
-                            {season.chapters.map(chapter => (
-                              <div key={chapter.id} className="space-y-1">
-                                <div 
-                                  role="button"
-                                  onClick={() => {
-                                    setActiveChapterId(chapter.id);
-                                    setView('chapter');
-                                  }}
-                                  className={`w-full flex items-center justify-between p-2 rounded-lg transition-colors text-sm cursor-pointer group/chapter ${view === 'chapter' && activeChapterId === chapter.id ? 'bg-[#E6E6D6]' : 'hover:bg-[#F5F5F0]'}`}
-                                >
-                                  <span className="truncate">{chapter.title}</span>
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); deleteChapter(season.id, chapter.id); }}
-                                    className="p-1 text-[#D1D1C1] hover:text-red-500 opacity-0 group-hover/chapter:opacity-100 transition-opacity"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-
-                                {activeChapterId === chapter.id && (
-                                  <div className="ml-4 space-y-1 border-l border-[#D1D1C1] pl-2">
-                                    {chapter.episodes.map(episode => (
-                                      <div 
-                                        key={episode.id}
-                                        role="button"
-                                        onClick={() => {
-                                          setActiveEpisodeId(episode.id);
-                                          setView('episode');
-                                        }}
-                                        className={`w-full flex items-center justify-between p-2 rounded-lg transition-colors text-xs cursor-pointer group/episode ${view === 'episode' && activeEpisodeId === episode.id ? 'bg-[#D1D1C1]' : 'hover:bg-[#F5F5F0]'}`}
-                                      >
-                                        <span className="truncate">{episode.title}</span>
-                                        <button 
-                                          onClick={(e) => { e.stopPropagation(); deleteEpisode(season.id, chapter.id, episode.id); }}
-                                          className="p-1 text-[#D1D1C1] hover:text-red-500 opacity-0 group-hover/episode:opacity-100 transition-opacity"
-                                        >
-                                          <Trash2 size={10} />
-                                        </button>
-                                      </div>
-                                    ))}
-                                    <button 
-                                      onClick={() => addEpisode(season.id, chapter.id)}
-                                      className="w-full text-left p-2 rounded-lg text-xs text-[#5A5A40] hover:bg-[#F5F5F0] flex items-center gap-1"
-                                    >
-                                      <Plus size={12} /> 화 추가
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                            <button 
-                              onClick={() => addChapter(season.id)}
-                              className="w-full text-left p-2 rounded-lg text-sm text-[#5A5A40] hover:bg-[#F5F5F0] flex items-center gap-1"
-                            >
-                              <Plus size={14} /> 챕터 추가
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                    <button 
+                      onClick={() => setShowMindMap(true)}
+                      className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors hover:bg-[#F5F5F0]"
+                    >
+                      <Network size={18} />
+                      <span className="font-medium">마인드맵 보기</span>
+                    </button>
                   </div>
                 </div>
               )}
+            </div>
 
-              <div className="mt-auto pt-6 border-t border-[#D1D1C1]">
-              </div>
+            <div className="mt-auto pt-6 border-t border-[#D1D1C1]">
             </div>
           </motion.aside>
         )}
@@ -2262,33 +2185,68 @@ export default function App() {
                                       </div>
 
                                       <div className="space-y-4">
-                                        <div className="border-b border-[#D1D1C1] pb-2">
+                                        <div className="flex items-center justify-between border-b border-[#D1D1C1] pb-2">
                                           <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">정보란</label>
+                                          <button 
+                                            onClick={() => {
+                                              const newChars = [...activeProject.characters];
+                                              const newItem = { id: Date.now().toString(), label: '새 항목', value: '' };
+                                              newChars[idx] = { ...char, infoItems: [...(char.infoItems || []), newItem] };
+                                              updateActiveProject({ characters: newChars });
+                                            }}
+                                            className="text-[10px] uppercase tracking-widest font-bold text-[#3E5C45] hover:underline"
+                                          >
+                                            + 항목 추가
+                                          </button>
                                         </div>
                                         
                                         <div className="grid grid-cols-1 gap-4">
-                                          {[
-                                            { id: 'desire', label: '욕망(목표)', value: char.desire },
-                                            { id: 'belief', label: '신념', value: char.belief },
-                                            { id: 'personality', label: '성격', value: char.personality },
-                                            { id: 'appearance', label: '외양', value: char.appearance },
-                                            { id: 'ability', label: '능력', value: char.ability },
-                                            { id: 'specialNotes', label: '기타 특이사항', value: char.specialNotes }
-                                          ].map(field => (
-                                            <div key={field.id} className="flex flex-col md:flex-row md:items-start gap-4 border-b border-[#D1D1C1]/30 pb-4 last:border-0">
-                                              <label className="w-full md:w-32 text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold pt-2">{field.label}</label>
+                                          {(char.infoItems || []).map((item, itemIdx) => (
+                                            <div key={item.id} className="flex flex-col md:flex-row md:items-start gap-4 border-b border-[#D1D1C1]/30 pb-4 last:border-0 group/item">
+                                              <div className="w-full md:w-32 space-y-1">
+                                                <input 
+                                                  type="text"
+                                                  value={item.label}
+                                                  onChange={(e) => {
+                                                    const newChars = [...activeProject.characters];
+                                                    const newItems = [...char.infoItems];
+                                                    newItems[itemIdx] = { ...item, label: e.target.value };
+                                                    newChars[idx] = { ...char, infoItems: newItems };
+                                                    updateActiveProject({ characters: newChars });
+                                                  }}
+                                                  className="w-full text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold bg-transparent border-b border-transparent focus:border-[#D1D1C1] outline-none"
+                                                  placeholder="항목 이름"
+                                                />
+                                                <button 
+                                                  onClick={() => {
+                                                    const newChars = [...activeProject.characters];
+                                                    const newItems = char.infoItems.filter(i => i.id !== item.id);
+                                                    newChars[idx] = { ...char, infoItems: newItems };
+                                                    updateActiveProject({ characters: newChars });
+                                                  }}
+                                                  className="text-[9px] text-red-400 opacity-0 group-hover/item:opacity-100 transition-opacity hover:underline"
+                                                >
+                                                  삭제
+                                                </button>
+                                              </div>
                                               <AutoResizeTextarea 
-                                                value={field.value || ''}
+                                                value={item.value}
                                                 onChange={(e) => {
                                                   const newChars = [...activeProject.characters];
-                                                  newChars[idx] = { ...char, [field.id]: e.target.value };
+                                                  const newItems = [...char.infoItems];
+                                                  newItems[itemIdx] = { ...item, value: e.target.value };
+                                                  newChars[idx] = { ...char, infoItems: newItems };
                                                   updateActiveProject({ characters: newChars });
                                                 }}
                                                 className="flex-1 text-sm bg-[#F5F5F0] p-4 rounded-xl border border-[#D1D1C1] outline-none focus:border-[#3E5C45] transition-colors resize-none"
+                                                placeholder="내용을 입력하세요"
                                                 minHeight="44px"
                                               />
                                             </div>
                                           ))}
+                                          {(!char.infoItems || char.infoItems.length === 0) && (
+                                            <p className="text-xs text-[#8E8E7E] italic py-4">항목 추가 버튼을 눌러 정보를 입력하세요.</p>
+                                          )}
                                         </div>
                                       </div>
                                     </div>
@@ -2326,6 +2284,45 @@ export default function App() {
                     <p className="text-lg leading-relaxed text-[#1A1A1A] italic">
                       {activeProject.synopsis || '기본 설정에서 시놉시스를 작성하면 여기에 표시됩니다.'}
                     </p>
+                  </div>
+
+                  {/* Ki-Seung-Jeon-Gyeol Section */}
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-3 border-b border-[#D1D1C1] pb-2">
+                      <Layers size={24} className="text-[#3E5C45]" />
+                      <h3 className="text-2xl font-bold">기승전결 정리</h3>
+                    </div>
+                    <div className="bg-white rounded-[40px] border border-[#D1D1C1] shadow-sm overflow-hidden">
+                      <div className="divide-y divide-[#D1D1C1]">
+                        {[
+                          { id: 'ki', label: '기', fullLabel: '기 (Introduction)', color: '#3E5C45' },
+                          { id: 'seung', label: '승', fullLabel: '승 (Development)', color: '#5A5A40' },
+                          { id: 'jeon', label: '전', fullLabel: '전 (Turn)', color: '#8E8E7E' },
+                          { id: 'gyeol', label: '결', fullLabel: '결 (Conclusion)', color: '#1A1A1A' }
+                        ].map((item, idx) => (
+                          <div key={item.id} className="flex flex-col md:flex-row group">
+                            <div className="md:w-48 p-8 bg-[#F5F5F0] flex flex-col justify-center items-center md:items-start border-b md:border-b-0 md:border-r border-[#D1D1C1]">
+                              <span className="text-4xl font-black opacity-10 mb-2">{item.label}</span>
+                              <label className="text-xs uppercase tracking-widest text-[#3E5C45] font-sans font-bold whitespace-nowrap">{item.fullLabel}</label>
+                            </div>
+                            <div className="flex-1 p-8 relative">
+                              <AutoResizeTextarea 
+                                value={activeProject[item.id as keyof Project] as string || ''}
+                                onChange={(e) => updateActiveProject({ [item.id as any]: e.target.value })}
+                                className="w-full text-lg leading-relaxed bg-transparent outline-none focus:ring-0 transition-colors resize-none italic placeholder-[#D1D1C1]"
+                                placeholder={`${item.fullLabel} 내용을 입력하세요...`}
+                                minHeight="150px"
+                              />
+                              {idx < 3 && (
+                                <div className="hidden md:block absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 bg-white p-1 rounded-full border border-[#D1D1C1]">
+                                  <ChevronDown size={14} className="text-[#D1D1C1]" />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   {/* 3 Acts 15 Chapters */}
@@ -2633,249 +2630,95 @@ export default function App() {
                 </motion.div>
               )}
 
-              {view === 'season' && activeSeason && (
+              {view === 'scriptPhotos' && (
                 <motion.div 
-                  key="season"
+                  key="scriptPhotos"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   className="space-y-8"
                 >
-                  <div className="space-y-2">
-                    <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">시즌 제목</label>
-                    <input 
-                      type="text" 
-                      value={activeSeason.title}
-                      onChange={(e) => updateSeason(activeSeason.id, { title: e.target.value })}
-                      className="w-full text-5xl font-bold bg-transparent border-none outline-none focus:ring-0"
-                    />
-                  </div>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <FileText size={18} className="text-[#5A5A40]" />
-                      <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">트리트먼트</label>
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="flex items-center gap-3">
+                      <ImageIcon size={32} className="text-[#5A5A40]" />
+                      <h2 className="text-4xl font-bold">글콘티 사진</h2>
                     </div>
-                    <AutoResizeTextarea 
-                      value={activeSeason.treatment}
-                      onChange={(e) => updateSeason(activeSeason.id, { treatment: e.target.value })}
-                      className="w-full min-h-[400px] text-lg leading-relaxed bg-white p-10 rounded-[40px] border border-[#D1D1C1] shadow-sm outline-none focus:border-[#5A5A40] transition-colors placeholder-[#D1D1C1]"
-                      placeholder="시즌의 전체적인 흐름과 트리트먼트를 작성하세요..."
-                    />
-                  </div>
-                </motion.div>
-              )}
-
-              {view === 'chapter' && activeSeason && activeChapter && (
-                <motion.div 
-                  key="chapter"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className="space-y-8"
-                >
-                  <div className="space-y-2">
-                    <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">챕터 제목</label>
-                    <div className="flex justify-between items-center">
+                    <label className="flex items-center gap-2 bg-[#5A5A40] text-white px-6 py-3 rounded-full text-sm font-bold hover:bg-[#4A4A30] transition-colors cursor-pointer shadow-lg hover:scale-105 active:scale-95">
+                      <Plus size={18} /> 사진 추가
                       <input 
-                        type="text" 
-                        value={activeChapter.title}
-                        onChange={(e) => updateChapter(activeSeason.id, activeChapter.id, { title: e.target.value })}
-                        className="text-5xl font-bold bg-transparent border-none outline-none focus:ring-0 flex-1"
+                        type="file" 
+                        className="hidden" 
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => handleMultipleImagesUpload(e, (base64s) => {
+                          const newPhotos = base64s.map(url => ({
+                            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                            url,
+                            caption: ''
+                          }));
+                          updateActiveProject({ scriptPhotos: [...(activeProject.scriptPhotos || []), ...newPhotos] });
+                        })}
                       />
-                      <button 
-                        onClick={() => deleteChapter(activeSeason.id, activeChapter.id)}
-                        className="p-3 text-[#D1D1C1] hover:text-red-500 transition-colors"
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {(activeProject.scriptPhotos || []).map((photo, idx) => (
+                      <motion.div 
+                        key={photo.id}
+                        layout
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="group bg-white rounded-[32px] border border-[#D1D1C1] overflow-hidden shadow-sm hover:shadow-xl transition-all"
                       >
-                        <Trash2 size={24} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <FileText size={18} className="text-[#5A5A40]" />
-                      <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">챕터 개요 / 노트</label>
-                    </div>
-                    <AutoResizeTextarea 
-                      value={activeChapter.content}
-                      onChange={(e) => updateChapter(activeSeason.id, activeChapter.id, { content: e.target.value })}
-                      className="w-full min-h-[200px] text-lg leading-relaxed bg-white p-10 rounded-[40px] border border-[#D1D1C1] shadow-sm outline-none focus:border-[#5A5A40] transition-colors placeholder-[#D1D1C1]"
-                      placeholder="챕터의 핵심 내용이나 작업 노트를 작성하세요..."
-                    />
-                  </div>
-                  <div className="space-y-4">
-                    <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">에피소드 목록</label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {activeChapter.episodes.map(ep => (
-                        <div 
-                          key={ep.id}
-                          role="button"
-                          onClick={() => {
-                            setActiveEpisodeId(ep.id);
-                            setView('episode');
-                          }}
-                          className="p-8 bg-white rounded-[32px] border border-[#D1D1C1] hover:border-[#5A5A40] transition-all text-left shadow-sm hover:shadow-xl group relative cursor-pointer"
-                        >
+                        <div className="relative aspect-[4/3] overflow-hidden bg-[#F5F5F0]">
+                          <img 
+                            src={photo.url} 
+                            alt={`Script ${idx + 1}`} 
+                            className="w-full h-full object-cover transition-transform group-hover:scale-105" 
+                          />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                           <button 
-                            onClick={(e) => { e.stopPropagation(); deleteEpisode(activeSeason.id, activeChapter.id, ep.id); }}
-                            className="absolute top-4 right-4 p-2 text-[#D1D1C1] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => {
+                              if (confirm('사진을 삭제하시겠습니까?')) {
+                                const newPhotos = activeProject.scriptPhotos.filter(p => p.id !== photo.id);
+                                updateActiveProject({ scriptPhotos: newPhotos });
+                              }
+                            }}
+                            className="absolute top-4 right-4 p-2 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-110 active:scale-90"
                           >
                             <Trash2 size={16} />
                           </button>
-                          <span className="text-xs text-[#8E8E7E] font-sans mb-2 block">{activeChapter.title}</span>
-                          <h3 className="text-2xl font-bold group-hover:text-[#5A5A40]">{ep.title}</h3>
-                          <p className="text-sm text-[#8E8E7E] mt-4 line-clamp-3 font-sans leading-relaxed">
-                            {ep.content || '내용이 없습니다.'}
-                          </p>
+                          <div className="absolute bottom-4 left-4 bg-black/50 text-white px-3 py-1 rounded-full text-[10px] font-bold backdrop-blur-sm">
+                            #{idx + 1}
+                          </div>
                         </div>
-                      ))}
-                      <button 
-                        onClick={() => addEpisode(activeSeason.id, activeChapter.id)}
-                        className="p-8 border-2 border-dashed border-[#D1D1C1] rounded-[32px] hover:border-[#5A5A40] hover:bg-white transition-all flex flex-col items-center justify-center gap-2 text-[#8E8E7E] hover:text-[#5A5A40]"
-                      >
-                        <Plus size={32} />
-                        <span className="font-sans font-bold text-sm">새 화 추가</span>
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {view === 'seasonTreatments' && (
-                <motion.div 
-                  key="seasonTreatments"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className="space-y-12"
-                >
-                  <div className="flex items-center gap-3">
-                    <BookOpen size={32} className="text-[#5A5A40]" />
-                    <h2 className="text-4xl font-bold">시즌별 트리트먼트</h2>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-8">
-                    {activeProject.seasons.map((season, idx) => (
-                      <div key={season.id} className="p-8 bg-white rounded-[40px] border border-[#D1D1C1] shadow-sm space-y-6">
-                        <div className="flex items-center gap-4">
-                          <span className="w-10 h-10 rounded-full bg-[#5A5A40] text-white flex items-center justify-center font-bold">
-                            {idx + 1}
-                          </span>
-                          <h3 className="text-2xl font-bold">{season.title}</h3>
-                        </div>
-                        <div className="space-y-4">
-                          <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">트리트먼트</label>
+                        <div className="p-6 space-y-3">
+                          <label className="text-[10px] uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">설명 / 메모</label>
                           <AutoResizeTextarea 
-                            value={season.treatment}
-                            onChange={(e) => updateSeason(season.id, { treatment: e.target.value })}
-                            className="w-full min-h-[200px] text-lg leading-relaxed bg-[#F5F5F0] p-6 rounded-3xl border border-[#D1D1C1] outline-none focus:border-[#5A5A40] transition-colors placeholder-[#D1D1C1] resize-none"
-                            placeholder="시즌 전체의 줄거리와 주요 전개를 작성하세요..."
+                            value={photo.caption}
+                            onChange={(e) => {
+                              const newPhotos = [...activeProject.scriptPhotos];
+                              newPhotos[idx] = { ...photo, caption: e.target.value };
+                              updateActiveProject({ scriptPhotos: newPhotos });
+                            }}
+                            className="w-full text-sm bg-[#F5F5F0] p-4 rounded-xl border border-[#D1D1C1] outline-none focus:border-[#5A5A40] transition-colors resize-none"
+                            placeholder="사진에 대한 설명을 입력하세요..."
+                            minHeight="60px"
                           />
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
-                    {activeProject.seasons.length === 0 && (
-                      <div className="h-[300px] border-2 border-dashed border-[#D1D1C1] rounded-2xl flex flex-col items-center justify-center text-[#8E8E7E] gap-4">
-                        <Layers size={48} className="opacity-20" />
-                        <p>시즌을 추가하여 트리트먼트를 작성하세요</p>
+                    {(activeProject.scriptPhotos || []).length === 0 && (
+                      <div className="col-span-full py-24 text-center border-2 border-dashed border-[#D1D1C1] rounded-[40px] bg-white/50">
+                        <ImageIcon size={48} className="mx-auto text-[#D1D1C1] mb-4" />
+                        <p className="text-[#8E8E7E] font-sans italic">등록된 사진이 없습니다. 상단의 '사진 추가' 버튼을 눌러주세요.</p>
                       </div>
                     )}
                   </div>
                 </motion.div>
               )}
 
-              {view === 'episode' && activeSeason && activeChapter && activeEpisode && (
-                <motion.div 
-                  key="episode"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className="space-y-8"
-                >
-                  <div className="space-y-2">
-                    <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">화 제목</label>
-                    <input 
-                      type="text" 
-                      value={activeEpisode.title}
-                      onChange={(e) => updateEpisode(activeSeason.id, activeChapter.id, activeEpisode.id, { title: e.target.value })}
-                      className="w-full text-5xl font-bold bg-transparent border-none outline-none focus:ring-0"
-                    />
-                  </div>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <FileText size={18} className="text-[#5A5A40]" />
-                          <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">글콘티 내용</label>
-                        </div>
-                        <div className="text-xs text-[#8E8E7E] font-sans font-bold">
-                          글자 수: {activeEpisode.content.length.toLocaleString()}
-                        </div>
-                      </div>
-                      <AutoResizeTextarea 
-                        value={activeEpisode.content}
-                        onChange={(e) => updateEpisode(activeSeason.id, activeChapter.id, activeEpisode.id, { content: e.target.value })}
-                        className="w-full min-h-[300px] text-xl leading-[2] bg-white p-12 md:p-20 rounded-[60px] border border-[#D1D1C1] shadow-sm outline-none focus:border-[#5A5A40] transition-colors placeholder-[#D1D1C1]"
-                        placeholder="여기에 글콘티를 작성하세요... (예: S#1. 학교 옥상 / 낮)"
-                      />
-                    </div>
-
-                    <div className="space-y-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <LayoutGrid size={18} className="text-[#5A5A40]" />
-                          <label className="text-xs uppercase tracking-widest text-[#8E8E7E] font-sans font-bold">컷 구성</label>
-                        </div>
-                        <button 
-                          onClick={() => addCut(activeSeason.id, activeChapter.id, activeEpisode.id)}
-                          className="flex items-center gap-2 text-[#5A5A40] hover:underline font-sans font-bold text-sm"
-                        >
-                          <Plus size={16} /> 컷 추가
-                        </button>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <DndContext 
-                          sensors={sensors}
-                          collisionDetection={closestCenter}
-                          onDragEnd={(e) => handleCutDragEnd(e, activeSeason.id, activeChapter.id, activeEpisode.id)}
-                        >
-                          <SortableContext 
-                            items={activeEpisode.cuts?.map(c => c.id) || []}
-                            strategy={verticalListSortingStrategy}
-                          >
-                            {activeEpisode.cuts?.map((cut, index) => (
-                              <SortableItem key={cut.id} id={cut.id}>
-                                <div className="flex gap-4 group">
-                                  <div className="flex-shrink-0 w-12 h-12 bg-[#E6E6D6] rounded-full flex items-center justify-center font-bold text-[#5A5A40] font-sans text-xs">
-                                    {index + 1}컷
-                                  </div>
-                                  <div className="flex-1 relative">
-                                    <AutoResizeTextarea 
-                                      value={cut.content}
-                                      onChange={(e) => updateCut(activeSeason.id, activeChapter.id, activeEpisode.id, cut.id, e.target.value)}
-                                      className="w-full min-h-[100px] bg-white p-6 rounded-[24px] border border-[#D1D1C1] shadow-sm outline-none focus:border-[#5A5A40] transition-colors placeholder-[#D1D1C1] font-sans"
-                                      placeholder={`${index + 1}컷 내용을 입력하세요...`}
-                                    />
-                                    <button 
-                                      onClick={() => deleteCut(activeSeason.id, activeChapter.id, activeEpisode.id, cut.id)}
-                                      className="absolute top-4 right-4 p-2 text-[#D1D1C1] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </div>
-                                </div>
-                              </SortableItem>
-                            ))}
-                          </SortableContext>
-                        </DndContext>
-                        {(!activeEpisode.cuts || activeEpisode.cuts.length === 0) && (
-                          <div className="text-center py-12 border-2 border-dashed border-[#D1D1C1] rounded-[40px] text-[#8E8E7E] font-sans italic">
-                            아직 추가된 컷이 없습니다. '컷 추가' 버튼을 눌러보세요.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                </motion.div>
-              )}
             </AnimatePresence>
           </div>
         </div>
@@ -2884,11 +2727,7 @@ export default function App() {
         <div className="absolute bottom-8 right-8 flex gap-3">
            {view !== 'project' && (
              <button 
-              onClick={() => {
-                if (view === 'episode') setView('chapter');
-                else if (view === 'chapter') setView('season');
-                else if (view === 'season') setView('project');
-              }}
+              onClick={() => setView('project')}
               className="w-16 h-16 bg-white border border-[#D1D1C1] rounded-full flex items-center justify-center shadow-xl hover:bg-[#F5F5F0] transition-colors"
              >
                <ChevronLeft size={28} />
@@ -2933,47 +2772,30 @@ export default function App() {
                     <div className="absolute top-full left-1/2 w-px h-16 bg-[#D1D1C1]" />
                   </button>
 
-                  {/* Seasons */}
                   <div className="flex gap-12 items-start">
-                    {activeProject.seasons.map((s, sIdx) => (
-                      <div key={s.id} className="flex flex-col items-center">
-                        <button 
-                          onClick={() => { setActiveSeasonId(s.id); setView('season'); setShowMindMap(false); }}
-                          className="bg-white border-2 border-[#5A5A40] px-6 py-3 rounded-2xl font-bold shadow-md mb-12 relative hover:scale-105 transition-transform"
-                        >
-                          {s.title}
-                          <div className="absolute top-full left-1/2 w-px h-12 bg-[#D1D1C1]" />
-                        </button>
-
-                        {/* Chapters */}
-                        <div className="flex gap-6 items-start">
-                          {s.chapters.map((c, cIdx) => (
-                            <div key={c.id} className="flex flex-col items-center">
-                              <button 
-                                onClick={() => { setActiveSeasonId(s.id); setActiveChapterId(c.id); setView('chapter'); setShowMindMap(false); }}
-                                className="bg-[#E6E6D6] px-4 py-2 rounded-xl font-bold text-sm shadow-sm mb-8 relative hover:scale-105 transition-transform"
-                              >
-                                {c.title}
-                                <div className="absolute top-full left-1/2 w-px h-8 bg-[#D1D1C1]" />
-                              </button>
-
-                              {/* Episodes */}
-                              <div className="flex flex-col gap-2">
-                                {c.episodes.map(e => (
-                                  <button 
-                                    key={e.id} 
-                                    onClick={() => { setActiveSeasonId(s.id); setActiveChapterId(c.id); setActiveEpisodeId(e.id); setView('episode'); setShowMindMap(false); }}
-                                    className="bg-white px-3 py-1 rounded-lg text-xs border border-[#D1D1C1] shadow-sm hover:border-[#5A5A40] transition-colors"
-                                  >
-                                    {e.title}
-                                  </button>
-                                ))}
-                              </div>
+                    <div className="flex flex-col items-center">
+                      <button 
+                        onClick={() => { setView('scriptPhotos'); setShowMindMap(false); }}
+                        className="bg-white border-2 border-[#5A5A40] px-6 py-3 rounded-2xl font-bold shadow-md mb-12 relative hover:scale-105 transition-transform"
+                      >
+                        글콘티 사진
+                        <div className="absolute top-full left-1/2 w-px h-12 bg-[#D1D1C1]" />
+                      </button>
+                      <div className="flex gap-6 items-start">
+                        {(activeProject.scriptPhotos || []).slice(0, 5).map((p, idx) => (
+                          <div key={p.id} className="flex flex-col items-center">
+                            <div className="bg-[#E6E6D6] px-4 py-2 rounded-xl font-bold text-sm shadow-sm mb-8 relative">
+                              사진 #{idx + 1}
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        ))}
+                        {(activeProject.scriptPhotos || []).length > 5 && (
+                          <div className="bg-[#E6E6D6] px-4 py-2 rounded-xl font-bold text-sm shadow-sm mb-8 relative">
+                            ...
+                          </div>
+                        )}
                       </div>
-                    ))}
+                    </div>
                   </div>
                 </div>
               </div>

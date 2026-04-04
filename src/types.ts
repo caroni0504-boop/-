@@ -30,21 +30,19 @@ export interface TimelineNode {
   description: string;
 }
 
+export interface CharacterInfoItem {
+  id: string;
+  label: string;
+  value: string;
+}
+
 export interface Character {
   id: string;
   name: string;
   role: string;
   description: string;
-  info?: string;
   image?: string;
-  catchphrase?: string;
-  desire?: string;
-  belief?: string;
-  keywords?: string;
-  personality?: string;
-  appearance?: string;
-  ability?: string;
-  specialNotes?: string;
+  infoItems: CharacterInfoItem[];
 }
 
 export interface Nation {
@@ -83,6 +81,12 @@ export interface StoryAct {
   chapters: StoryChapter[];
 }
 
+export interface ScriptPhoto {
+  id: string;
+  url: string;
+  caption: string;
+}
+
 export interface Project {
   id: string;
   title: string;
@@ -112,7 +116,14 @@ export interface Project {
   characters: Character[];
   
   // Story Development
+  ki: string;
+  seung: string;
+  jeon: string;
+  gyeol: string;
   storyActs: StoryAct[];
+  
+  // Script (Simplified to just photos)
+  scriptPhotos: ScriptPhoto[];
   
   basicSettings: string;
   worldSettings: string;
@@ -121,7 +132,6 @@ export interface Project {
   memo: string;
   progress: number;
   timeline: TimelineNode[];
-  seasons: Season[];
   referenceCategories: ReferenceCategory[];
 }
 
