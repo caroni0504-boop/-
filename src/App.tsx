@@ -24,6 +24,7 @@ import {
   Maximize2,
   Minimize2,
   Download,
+  Share,
   Printer,
   Settings,
   Globe,
@@ -1011,12 +1012,12 @@ export default function App() {
                       className="flex items-center gap-2 px-4 py-2 text-[#3E5C45] hover:bg-[#F5F5F0] rounded-full transition-colors font-sans font-bold text-xs"
                       title="파일로 내보내기 (JSON)"
                     >
-                      <Download size={16} />
+                      <Upload size={16} />
                       <span>내보내기</span>
                     </button>
                     <div className="w-[1px] h-4 bg-[#D1D1C1] self-center mx-1"></div>
                     <label className="flex items-center gap-2 px-4 py-2 text-[#5A5A40] hover:bg-[#F5F5F0] rounded-full transition-colors cursor-pointer font-sans font-bold text-xs" title="파일에서 불러오기 (JSON)">
-                      <Upload size={16} />
+                      <Download size={16} />
                       <span>불러오기</span>
                       <input type="file" accept=".json" onChange={importFromJson} className="hidden" />
                     </label>

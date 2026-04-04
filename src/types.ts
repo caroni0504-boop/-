@@ -87,6 +87,13 @@ export interface ScriptPhoto {
   caption: string;
 }
 
+export interface ScriptEpisode {
+  id: string;
+  section: 'ki' | 'seung' | 'jeon' | 'gyeol';
+  title: string;
+  content: string;
+}
+
 export interface Project {
   id: string;
   title: string;
@@ -122,8 +129,9 @@ export interface Project {
   gyeol: string;
   storyActs: StoryAct[];
   
-  // Script (Simplified to just photos)
+  // Script (Simplified to just photos and table)
   scriptPhotos: ScriptPhoto[];
+  scriptEpisodes: ScriptEpisode[];
   
   basicSettings: string;
   worldSettings: string;
